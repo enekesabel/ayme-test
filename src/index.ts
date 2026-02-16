@@ -126,69 +126,6 @@ export type StateFunction<R> = (() => Promise<R>) & {
   ): Promise<void>;
 };
 
-// ============ Scope ============
-
-/**
- * Type for the Scope property that can reference parent classes.
- * Can be a string or a class reference.
- */
-export type ScopeValue = string | (new (...args: any[]) => PageFragment);
-
-/**
- * Resolves the scope for a class by recursively following Scope references.
- *
- * @param classWithScope - A class that may have a static Scope property
- * @returns The resolved scope string, or empty string if no scope
- *
- * @example
- * ```typescript
- * class Pages {
- *   static Scope = 'App';
- * }
- *
- * class TodoPage extends PageObject {
- *   static Scope = Pages;
- * }
- *
- * resolveScope(TodoPage) // Returns: "App.Pages"
- * ```
- */
-function resolveScope(classWithScope: new (...args: any[]) => any): string {
-  const scope = (classWithScope as any).Scope;
-
-  if (!scope) {
-    return '';
-  }
-
-  if (typeof scope === 'string') {
-    return scope;
-  }
-
-  // It's a class reference - recursively resolve and append class name
-  const parentScope = resolveScope(scope);
-  const scopeName = scope.name;
-
-  if (parentScope) {
-    return `${parentScope}.${scopeName}`;
-  }
-
-  return scopeName;
-}
-
-// ============ Auto TestId Branding ============
-
-/**
- * Runtime symbol for marking auto testId children.
- * Used internally to identify components created with auto testId.
- */
-const AutoTestIdBrand = Symbol('AutoTestIdBrand');
-
-/**
- * Branded type for components created with auto testId generation.
- * Used by TestIdOf<T> to extract only auto testId properties.
- */
-export type AutoTestIdChild<T> = T & { [AutoTestIdBrand]: true };
-
 // ============ Action Function ============
 
 /**
@@ -330,96 +267,6 @@ export type FilterExpectations<T> = {
     ? R | ((value: R) => boolean)
     : never;
 };
-
-/**
- * Extracts property names that are auto testId children (created with this.Child() or this.ChildCollection()).
- */
-type AutoTestIdKeys<T> = {
-  [K in keyof T]: T[K] extends { [AutoTestIdBrand]: true } ? K : never;
-}[keyof T];
-
-/**
- * Internal utility: Extracts property names that are auto testId children.
- * Used by AllTestIds<T> to generate full testIds.
- */
-type TestIdOf<T> = AutoTestIdKeys<T>;
-
-/**
- * Looks up the class name from an exports object by matching the class constructor.
- *
- * @internal
- */
-type ClassToName<Exports, Class> = {
-  [K in keyof Exports]: Exports[K] extends Class ? K : never;
-}[keyof Exports];
-
-/**
- * Recursively resolves the scope for a class type.
- * Handles both string scopes and class reference scopes.
- *
- * @internal
- */
-type ResolveScope<Exports, T> = T extends { Scope: infer S }
-  ? S extends string
-    ? S
-    : S extends new (...args: any[]) => any
-    ? ResolveScope<Exports, S> extends infer ParentScope
-      ? ParentScope extends string
-        ? ParentScope extends ''
-          ? ClassToName<Exports, S> & string
-          : `${ParentScope}.${ClassToName<Exports, S> & string}`
-        : ClassToName<Exports, S> & string
-      : never
-    : never
-  : '';
-
-/**
- * Generates full testId string literals for all exported POM classes.
- * Combines scope, class names, and auto testId property names: `${Scope}.${ClassName}.${PropertyName}`.
- * Classes without auto testId children are automatically filtered out.
- *
- * @example
- * ```typescript
- * // In pages/index.ts
- * export class Pages {
- *   static Scope = 'App';
- * }
- *
- * export class TodoPage extends PageObject {
- *   static Scope = Pages;
- *   newTodoInput = this.Child(NewTodoInput);
- *   items = this.ChildCollection(TodoItem);
- * }
- *
- * export class TodoItem extends PageComponent {
- *   checkbox = this.Child(Checkbox);
- * }
- *
- * // Usage
- * import * as Pages from './pages';
- * type AllIds = AllTestIds<typeof Pages>;
- * // AllIds = "App.Pages.TodoPage.newTodoInput" | "App.Pages.TodoPage.items" | "TodoItem.checkbox" | ...
- *
- * const testId: AllIds = "App.Pages.TodoPage.newTodoInput"; // ✅ Type-safe
- * const badId: AllIds = "TodoPage.wrong"; // ❌ Type error
- * ```
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AllTestIds<T extends Record<string, new (...args: any[]) => any>> = {
-  [ClassName in keyof T]: T[ClassName] extends new (...args: any[]) => infer Instance
-    ? TestIdOf<Instance> extends never
-      ? never // Filter out classes with no auto testId children
-      : ResolveScope<T, T[ClassName]> extends infer Scope
-      ? Scope extends string
-        ? {
-            [K in TestIdOf<Instance>]: Scope extends ''
-              ? `${ClassName & string}.${K & string}`
-              : `${Scope}.${ClassName & string}.${K & string}`;
-          }[TestIdOf<Instance>]
-        : never
-      : never
-    : never;
-}[keyof T];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPageNode = PageNode;
@@ -617,206 +464,38 @@ export abstract class PageFragment {
   protected constructor(protected readonly page: Page) {}
 
   /**
-   * Factory for creating child components.
-   * 
-   * Two modes:
-   * - `this.Child(ComponentClass, locator)` - with custom locator
-   * - `this.Child.withAutoTestId(ComponentClass)` - with auto-generated testId
+   * Factory for creating child components with explicit locators.
    *
    * @example
    * ```typescript
    * class TodoItem extends PageComponent {
-   *   // Custom locator (explicit)
    *   label = this.Child(PageElement, this.rootLocator.locator('label'));
-   *   
-   *   // Auto testId: "TodoItem.checkbox"
-   *   checkbox = this.Child.withAutoTestId(Checkbox);
    * }
    * ```
    */
-  protected readonly Child = Object.assign(
-    // Main callable: requires locator
-    <T extends PageNode>(
-      ComponentClass: PageNodeConstructor<T>,
-      locator: Locator
-    ): T => {
-      return new ComponentClass(locator);
-    },
-    // withAutoTestId method
-    {
-      withAutoTestId: <T extends PageNode>(
-        ComponentClass: PageNodeConstructor<T>
-      ): AutoTestIdChild<T> => {
-        return this.createChildWithAutoTestId(ComponentClass) as AutoTestIdChild<T>;
-      }
-    }
-  );
+  protected readonly Child = <T extends PageNode>(
+    ComponentClass: PageNodeConstructor<T>,
+    locator: Locator
+  ): T => {
+    return new ComponentClass(locator);
+  };
 
   /**
-   * Creates a child component with automatic testId generation.
-   * Uses a lazy proxy to discover the property name on first access.
+   * Factory for creating child component collections with explicit locators.
    *
-   * @internal
-   */
-  private createChildWithAutoTestId<T extends PageNode>(
-    ComponentClass: PageNodeConstructor<T>
-  ): T {
-    // Capture 'this' in closure to avoid accessing it from proxy handler
-    const instance = this;
-    const ctor = instance.constructor as new (...args: any[]) => any;
-    const scope = resolveScope(ctor);
-    const className = ctor.name;
-
-    // Cache for the real component instance once discovered
-    let cachedInstance: T | null = null;
-    let cachedPropertyName: string | null = null;
-
-    const proxy = new Proxy({} as T, {
-      get: (_target, prop) => {
-        // If we've already discovered and cached the instance, use it
-        if (cachedInstance !== null) {
-          return (cachedInstance as any)[prop];
-        }
-
-        // Discover which property on the captured instance holds this proxy
-        if (cachedPropertyName === null) {
-          // Use Reflect to avoid triggering getters/proxies
-          for (const key of Reflect.ownKeys(instance)) {
-            if (key === prop) continue; // Skip current property to prevent recursion
-
-            const descriptor = Reflect.getOwnPropertyDescriptor(instance, key);
-            if (descriptor && 'value' in descriptor && descriptor.value === proxy) {
-              cachedPropertyName = String(key);
-              break;
-            }
-          }
-
-          if (cachedPropertyName === null) {
-            throw new Error(
-              `Failed to discover property name for ${ComponentClass.name}. ` +
-              `Make sure you're assigning the result of this.Child() to a class property.`
-            );
-          }
-
-          // Generate testId and create the real component
-          const testId = scope
-            ? `${scope}.${className}.${cachedPropertyName}`
-            : `${className}.${cachedPropertyName}`;
-          const hostLocator = (instance as any).rootLocator || instance.page;
-          const locator = hostLocator.getByTestId(testId);
-
-          cachedInstance = new ComponentClass(locator);
-          (cachedInstance as any)[AutoTestIdBrand] = true;
-          (instance as any)[cachedPropertyName] = cachedInstance;
-        }
-
-        return (cachedInstance as any)[prop];
-      }
-    });
-
-    return proxy;
-  }
-
-  /**
-   * Factory for creating child component collections.
-   * 
-   * Two modes:
-   * - `this.ChildCollection(ComponentClass, locator)` - with custom locator
-   * - `this.ChildCollection.withAutoTestId(ComponentClass)` - with auto-generated testId
-   * 
    * @example
    * ```typescript
    * class TodoPage extends PageObject {
-   *   // Custom locator (explicit)
    *   buttons = this.ChildCollection(Button, this.page.locator('.btn'));
-   *   
-   *   // Auto testId: "TodoPage.items"
-   *   items = this.ChildCollection.withAutoTestId(TodoItem);
    * }
    * ```
    */
-  protected readonly ChildCollection = Object.assign(
-    // Main callable: requires locator
-    <T extends PageNode>(
-      ComponentClass: PageNodeConstructor<T>,
-      locator: Locator
-    ): PageNodeCollection<T> => {
-      return PageNodeCollection.create(ComponentClass, locator);
-    },
-    // withAutoTestId method
-    {
-      withAutoTestId: <T extends PageNode>(
-        ComponentClass: PageNodeConstructor<T>
-      ): AutoTestIdChild<PageNodeCollection<T>> => {
-        return this.createChildCollectionWithAutoTestId(ComponentClass) as AutoTestIdChild<PageNodeCollection<T>>;
-      }
-    }
-  );
-
-  /**
-   * Creates a child collection with automatic testId generation.
-   * Uses a lazy proxy to discover the property name on first access.
-   *
-   * @internal
-   */
-  private createChildCollectionWithAutoTestId<T extends PageNode>(
-    ComponentClass: PageNodeConstructor<T>
-  ): PageNodeCollection<T> {
-    // Capture 'this' in closure to avoid accessing it from proxy handler
-    const instance = this;
-    const ctor = instance.constructor as new (...args: any[]) => any;
-    const scope = resolveScope(ctor);
-    const className = ctor.name;
-
-    // Cache for the real collection instance once discovered
-    let cachedCollection: PageNodeCollection<T> | null = null;
-    let cachedPropertyName: string | null = null;
-
-    const proxy = new Proxy({} as PageNodeCollection<T>, {
-      get: (_target, prop) => {
-        // If we've already discovered and cached the collection, use it
-        if (cachedCollection !== null) {
-          return (cachedCollection as any)[prop];
-        }
-
-        // Discover which property on the captured instance holds this proxy
-        if (cachedPropertyName === null) {
-          // Use Reflect to avoid triggering getters/proxies
-          for (const key of Reflect.ownKeys(instance)) {
-            if (key === prop) continue; // Skip current property to prevent recursion
-
-            const descriptor = Reflect.getOwnPropertyDescriptor(instance, key);
-            if (descriptor && 'value' in descriptor && descriptor.value === proxy) {
-              cachedPropertyName = String(key);
-              break;
-            }
-          }
-
-          if (cachedPropertyName === null) {
-            throw new Error(
-              `Failed to discover property name for ${ComponentClass.name} collection. ` +
-              `Make sure you're assigning the result of this.ChildCollection() to a class property.`
-            );
-          }
-
-          // Generate testId and create the real collection
-          const testId = scope
-            ? `${scope}.${className}.${cachedPropertyName}`
-            : `${className}.${cachedPropertyName}`;
-          const hostLocator = (instance as any).rootLocator || instance.page;
-          const locator = hostLocator.getByTestId(testId);
-
-          cachedCollection = PageNodeCollection.create(ComponentClass, locator);
-          (cachedCollection as any)[AutoTestIdBrand] = true;
-          (instance as any)[cachedPropertyName] = cachedCollection;
-        }
-
-        return (cachedCollection as any)[prop];
-      }
-    });
-
-    return proxy;
-  }
+  protected readonly ChildCollection = <T extends PageNode>(
+    ComponentClass: PageNodeConstructor<T>,
+    locator: Locator
+  ): PageNodeCollection<T> => {
+    return PageNodeCollection.create(ComponentClass, locator);
+  };
 
   /**
    * Creates an action function with declarative effects.

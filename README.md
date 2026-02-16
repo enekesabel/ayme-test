@@ -324,93 +324,6 @@ const longItem = await todoPage.items.find({
 });
 ```
 
-### Auto TestId System
-
-> *"There are only two hard things in Computer Science: cache invalidation and naming things."*  
-> — Phil Karlton
-
-Auto TestId solves the naming problem for `data-testid` attributes by deriving consistent, type-safe identifiers from your POM structure.
-
-#### Basic Usage
-
-Use `this.Child.withAutoTestId()` to generate testIds automatically:
-
-```typescript
-class TodoItem extends PageComponent {
-  // Generates: getByTestId('TodoItem.checkbox')
-  checkbox = this.Child.withAutoTestId(Checkbox);
-  
-  // Generates: getByTestId('TodoItem.label')
-  label = this.Child.withAutoTestId(PageElement);
-}
-
-class TodoPage extends PageObject {
-  // Generates: getByTestId('TodoPage.items')
-  items = this.ChildCollection.withAutoTestId(TodoItem);
-}
-```
-
-The testId format is: `{ClassName}.{propertyName}`
-
-#### Scope System
-
-Use `static Scope` to organize testIds hierarchically:
-
-```typescript
-// String scope
-class TodoPage extends PageObject {
-  static Scope = 'Pages' as const;
-  items = this.ChildCollection.withAutoTestId(TodoItem);
-  // Generates: getByTestId('Pages.TodoPage.items')
-}
-
-// Class reference scope (chained)
-class TodoItem extends PageComponent {
-  static Scope = TodoPage;
-  checkbox = this.Child.withAutoTestId(Checkbox);
-  // Generates: getByTestId('Pages.TodoPage.TodoItem.checkbox')
-}
-```
-
-#### AllTestIds<T> Type
-
-Export your POM classes to generate a union type of all valid testIds:
-
-```typescript
-// pom/index.ts
-export { TodoPage } from './TodoPage';
-export { TodoItem } from './TodoItem';
-
-// testids.ts
-import * as Pom from './pom';
-import { AllTestIds } from '@ayde/test';
-
-export type TestId = AllTestIds<typeof Pom>;
-// TestId = "Pages.TodoPage.items" | "Pages.TodoPage.TodoItem.checkbox" | ...
-```
-
-#### React Integration Example
-
-Use `AllTestIds<T>` to create type-safe testId bindings in your React app:
-
-```tsx
-import { TestId } from './testids';
-
-interface Props {
-  testId: TestId;  // Type-safe: only valid testIds allowed
-}
-
-function Button({ testId, ...props }: Props) {
-  return <button data-testid={testId} {...props} />;
-}
-
-// Usage
-<Button testId="Pages.TodoPage.items" />      // ✅ Valid
-<Button testId="Pages.TodoPage.typo" />       // ❌ Type error!
-```
-
-TypeScript catches invalid testIds at compile time, preventing typos and stale references.
-
 ## Class Hierarchy
 
 ```
@@ -439,7 +352,6 @@ import {
   ActionFunction,
   EffectEntry,
   Effects,
-  AllTestIds,
   FilterExpectations,
 } from '@ayde/test';
 ```
