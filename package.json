@@ -1,0 +1,77 @@
+{
+  "name": "@ayde/test",
+  "version": "0.1.0-beta.0",
+  "description": "Ayde testing framework for Playwright - drop-in @playwright/test wrapper with POM utilities",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./reporter": {
+      "import": {
+        "types": "./dist/reporter.d.ts",
+        "default": "./dist/reporter.js"
+      },
+      "require": {
+        "types": "./dist/reporter.d.cts",
+        "default": "./dist/reporter.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "prepublishOnly": "pnpm run build"
+  },
+  "keywords": [
+    "playwright",
+    "page-object-model",
+    "pom",
+    "testing",
+    "e2e",
+    "end-to-end",
+    "automation",
+    "ayde"
+  ],
+  "author": "Ayde",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enekesabel/ayde.git"
+  },
+  "bugs": {
+    "url": "https://github.com/enekesabel/ayde/issues"
+  },
+  "homepage": "https://github.com/enekesabel/ayde#readme",
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3"
+  }
+}
