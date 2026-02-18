@@ -75,8 +75,8 @@ This should show you as a member.
 For scoped packages, you need to explicitly make it public:
 
 ```bash
-# From the packages/test directory
-cd packages/test
+# From the repository root
+cd .
 
 # Build the package
 pnpm build
@@ -246,8 +246,8 @@ Scoped packages default to private. Use `--access public`.
 
 ### Organization name "ayde" is taken
 Choose an alternative like:
-- `@ayde-dev/pom`
-- `@ayde-hq/pom`
+- `@ayde-dev/test`
+- `@ayde-hq/test`
 - `@useayde/test`
 
 Then update `package.json` accordingly.
@@ -258,7 +258,7 @@ Then update `package.json` accordingly.
 
 1. **Add badges to README**:
    ```markdown
-   [![npm version](https://badge.fury.io/js/%40ayde%2Fpom.svg)](https://www.npmjs.com/package/@ayde/test)
+   [![npm version](https://badge.fury.io/js/%40ayde%2Ftest.svg)](https://www.npmjs.com/package/@ayde/test)
    ```
 
 2. **Set up GitHub Actions** for automated testing and publishing
