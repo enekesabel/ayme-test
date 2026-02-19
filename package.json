@@ -17,6 +17,16 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./primitives": {
+      "import": {
+        "types": "./dist/primitives/index.d.ts",
+        "default": "./dist/primitives/index.js"
+      },
+      "require": {
+        "types": "./dist/primitives/index.d.cts",
+        "default": "./dist/primitives/index.cjs"
+      }
+    },
     "./reporter": {
       "import": {
         "types": "./dist/reporter.d.ts",
