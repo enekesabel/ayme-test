@@ -108,7 +108,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
     } catch (error) {
       const errorStr = String(error);
       expect(errorStr).toContain('TestComponent');
-      expect(errorStr).toContain('Timeout');
+      expect(errorStr).toContain('not met within 200ms');
     }
   });
 

@@ -1,12 +1,10 @@
 import { test as base, expect as playwrightExpect } from '@playwright/test';
-import type { PageFragment, StateFunction } from './index';
-import { waitForStates } from './index';
+import type { PageFragment } from './index';
+import type { StateFunction } from './primitives';
+import type { StateKeys } from './primitives/types';
+import { waitForStates } from './primitives';
 
 // ============ Types ============
-
-type StateKeys<T> = {
-  [K in keyof T]: T[K] extends StateFunction<unknown> ? K : never;
-}[keyof T];
 
 /**
  * Maps State keys to their resolved return types or predicates.
