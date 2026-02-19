@@ -189,19 +189,22 @@ Key fields for npm publishing (already configured):
 
 ```json
 {
-  "name": "@ayde/test",           // Scoped package name
-  "version": "0.0.1",            // Current version
-  "main": "./dist/index.cjs",    // CJS entry point
-  "module": "./dist/index.js",   // ESM entry point
-  "types": "./dist/index.d.ts",  // TypeScript types
-  "files": ["dist"],             // What gets published
-  "exports": { ... },            // Modern exports map
-  "peerDependencies": {          // User must install these
+  "name": "@ayde/test",                    // Scoped package name
+  "version": "0.1.0-beta.0",              // Current version
+  "type": "module",                        // ESM by default
+  "files": ["dist"],                       // What gets published
+  "exports": {                             // Subpath exports (no bare import)
+    "./primitives": { "import": { ... }, "require": { ... } },
+    "./playwright": { "import": { ... }, "require": { ... } },
+    "./playwright/pom": { "import": { ... }, "require": { ... } },
+    "./playwright/reporter": { "import": { ... }, "require": { ... } }
+  },
+  "peerDependencies": {                    // User must install these
     "@playwright/test": ">=1.40.0"
   },
-  "license": "MIT",              // Open source license
-  "repository": { ... },         // Link to source code
-  "keywords": [ ... ]            // Help with npm search
+  "license": "MIT",                        // Open source license
+  "repository": { ... },                   // Link to source code
+  "keywords": [ ... ]                      // Help with npm search
 }
 ```
 

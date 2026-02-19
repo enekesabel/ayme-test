@@ -1,5 +1,5 @@
-import { test, expect } from '../src';
-import { TodoPage } from './pages/TodoPage';
+import { test, expect } from '../../src/playwright';
+import { TodoPage } from './TodoPage';
 
 /**
  * Showcase tests demonstrating @ayde/test framework capabilities.

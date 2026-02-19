@@ -1,4 +1,5 @@
-import { test, expect, PageComponent, PageObject } from '../src';
+import { test, expect } from '../../src/playwright';
+import { PageComponent, PageObject } from '../../src/playwright/pom';
 
 /**
  * Runtime tests for toHaveState polling behavior.
