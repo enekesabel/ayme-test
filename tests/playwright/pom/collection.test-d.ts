@@ -1,4 +1,4 @@
-import { PageComponent, PageNodeCollection } from '../src';
+import { PageComponent, PageNodeCollection } from '../../../src/playwright/pom';
 
 /**
  * Type tests for Collection filter() and find() methods.

@@ -1,4 +1,4 @@
-import { PageObject, PageComponent, PageElement } from '../../src/index';
+import { PageObject, PageComponent, PageElement } from '../../src/playwright/pom';
 
 /**
  * A reusable checkbox component.

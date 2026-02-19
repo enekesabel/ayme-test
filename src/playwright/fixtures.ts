@@ -1,8 +1,8 @@
 import { test as base, expect as playwrightExpect } from '@playwright/test';
-import type { PageFragment } from './index';
-import type { StateFunction } from './primitives';
-import type { StateKeys } from './primitives/types';
-import { waitForStates } from './primitives';
+import type { PageFragment } from './pom/PageFragment';
+import type { StateFunction } from '../primitives/state';
+import type { StateKeys } from '../primitives/types';
+import { waitForStates } from '../primitives/wait';
 
 // ============ Types ============
 

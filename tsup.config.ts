@@ -1,7 +1,12 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/primitives/index.ts', 'src/reporter.ts'],
+  entry: [
+    'src/primitives/index.ts',
+    'src/playwright/pom/index.ts',
+    'src/playwright/index.ts',
+    'src/playwright/reporter.ts',
+  ],
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

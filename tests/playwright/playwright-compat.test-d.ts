@@ -1,5 +1,5 @@
-import { defineConfig, devices, test, expect } from '../src';
-import type { Reporter } from '../src/reporter';
+import { defineConfig, devices, test, expect } from '../../src/playwright';
+import type { Reporter } from '../../src/playwright/reporter';
 
 const config = defineConfig({
   use: { ...devices['Desktop Chrome'] },

@@ -1,4 +1,5 @@
-import { PageComponent, PageObject, expect } from '../src';
+import { expect } from '../../src/playwright';
+import { PageComponent, PageObject } from '../../src/playwright/pom';
 
 /**
  * Type tests for toHaveState custom matcher.
@@ -83,7 +84,7 @@ async function testPageObjectToHaveState(page: TestPage) {
 
 // ============ Verify Only toHaveState and Existence Matchers Are Exposed ============
 
-import type { PageFragmentMatchers } from '../src';
+import type { PageFragmentMatchers } from '../../src/playwright';
 
 // Verify PageFragmentMatchers has the expected keys
 type PageFragmentMatchersKeys = keyof PageFragmentMatchers<TestComponent>;

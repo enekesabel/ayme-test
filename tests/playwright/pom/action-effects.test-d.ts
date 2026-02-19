@@ -1,4 +1,6 @@
-import { PageComponent, PageObject, StateFunction, ActionFunction } from '../src';
+import { PageComponent } from '../../../src/playwright/pom';
+import type { ActionFunction } from '../../../src/playwright/pom';
+import type { StateFunction } from '../../../src/primitives';
 
 /**
  * Type tests for Action effects with this.Effect.
