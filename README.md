@@ -1,19 +1,32 @@
 # @ayde/test
 
-A type-safe testing framework built on [Playwright](https://playwright.dev/) with declarative Page Object Model (POM) primitives, auto-retry state assertions, and verified action effects.
+State-driven testing for Playwright. `@ayde/test` keeps Playwright's runner and assertions, and adds semantic state queries, action effect verification, and a typed POM layer.
 
-## Package Structure
+## Motivation
 
-`@ayde/test` is organized into focused subpath exports:
+Most E2E tests become brittle because they assert behavior through implementation details:
+DOM structure, CSS classes, selector shape, or driver-specific mechanics.
 
-| Import | Description |
+`@ayde/test` aims to make tests express user intent and verify user-observable outcomes.
+
+The model is:
+
+- define semantic `State`s (`isCompleted`, `itemCount`, `isEditing`)
+- execute behavior with `Action`s
+- use `Effect`s to signal action completion (and optionally enforce always-on invariants)
+- assert states (`toHaveState` / `waitFor`) instead of low-level probing in every test
+
+Implementation details still exist, but they are localized in one place (state/component definitions), so test intent stays stable across UI refactors and driver changes.
+
+## Package Map
+
+| Import | Use it for |
 |---|---|
-| `@ayde/test/primitives` | Framework-independent building blocks: `State`, `Action`, `Collection`, `waitForStates` |
-| `@ayde/test/playwright` | Drop-in replacement for `@playwright/test` with extended `test` and `expect` |
-| `@ayde/test/playwright/pom` | Playwright-specific Page Object Model classes |
-| `@ayde/test/playwright/reporter` | Drop-in replacement for `@playwright/test/reporter` |
+| `@ayde/test/playwright` | Playwright wrapper: `test`, `expect`, `toHaveState`, and Playwright POM classes |
+| `@ayde/test/primitives` | Framework-agnostic core: `State`, `Action`, `Effect`, `Collection`, `waitFor` |
+| `@ayde/test/pom-universal` | Framework-neutral POM base classes for building adapters |
 
-## Installation
+## Install
 
 ```bash
 npm install @playwright/test @ayde/test
@@ -23,368 +36,92 @@ pnpm add @playwright/test @ayde/test
 yarn add @playwright/test @ayde/test
 ```
 
-`@ayde/test` works with the Playwright CLI and runner as-is (`npx playwright test`).
+Run tests with the standard Playwright runner:
 
-## Migration from @playwright/test
-
-Switch imports from `@playwright/test` to `@ayde/test/playwright`:
-
-```typescript
-import { test, expect, defineConfig, devices } from '@ayde/test/playwright';
-```
-
-For reporter types:
-
-```typescript
-import type { Reporter } from '@ayde/test/playwright/reporter';
-```
-
-For POM classes:
-
-```typescript
-import { PageComponent, PageObject, PageElement } from '@ayde/test/playwright/pom';
+```bash
+npx playwright test
 ```
 
 ## Quick Start
 
-### Creating a Component
-
 ```typescript
-import { PageComponent, PageElement } from '@ayde/test/playwright/pom';
+import { test, expect, PageObject, PageComponent } from '@ayde/test/playwright';
 
-export class TodoItem extends PageComponent {
-  checkbox = this.Child(PageElement, this.rootLocator.locator('.toggle'));
-  label = this.Child(PageElement, this.rootLocator.locator('label'));
+class TodoItem extends PageComponent {
+  private checkbox = this.rootLocator.locator('.toggle');
 
-  getText = this.State(() => this.label.rootLocator.innerText());
-  isCompleted = this.State(() => this.rootLocator.hasClass('completed'));
+  isCompleted = this.State(() =>
+    this.rootLocator.evaluate(node => node.classList.contains('completed'))
+  );
 
   toggle = this.Action(
-    () => this.checkbox.rootLocator.click(),
-    this.Effect(this.isCompleted, prev => !prev())
-  );
-
-  markAsCompleted = this.Action(
-    async () => {
-      if (!(await this.isCompleted())) await this.toggle();
-    },
-    this.Effect(this.isCompleted, true)
+    () => this.checkbox.click(),
+    this.Effect(this.isCompleted, (cur, prev) => cur === !prev)
   );
 }
-```
 
-### Creating a Page Object
-
-```typescript
-import { PageObject, PageElement } from '@ayde/test/playwright/pom';
-import { TodoItem } from './TodoItem';
-
-export class TodoPage extends PageObject {
-  newTodoInput = this.Child(PageElement, this.page.locator('.new-todo'));
-  items = this.ChildCollection(TodoItem, this.page.locator('.todo-list li'));
+class TodoPage extends PageObject {
+  private newTodoInput = this.page.locator('.new-todo');
+  private todoItems = this.page.locator('.todo-list li');
+  items = this.Collection(TodoItem, this.todoItems);
 
   itemCount = this.State(() => this.items.count());
-  completedCount = this.State(() =>
-    this.items.filter({ isCompleted: true }).count()
-  );
+  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
+
+  goto = this.Action(() => this.page.goto('https://demo.playwright.dev/todomvc/#/'));
 
   addTodo = this.Action(
     async (text: string) => {
-      await this.newTodoInput.rootLocator.fill(text);
-      await this.newTodoInput.rootLocator.press('Enter');
+      await this.newTodoInput.fill(text);
+      await this.newTodoInput.press('Enter');
     },
-    this.Effect(this.itemCount, prev => prev() + 1)
-  );
-
-  clearCompleted = this.Action(
-    () => this.page.locator('.clear-completed').click(),
-    this.Effect(this.completedCount, 0)
+    this.Effect(this.itemCount, (cur, prev) => cur === prev + 1)
   );
 }
-```
 
-### Using in Tests
-
-```typescript
-import { test, expect } from '@ayde/test/playwright';
-import { TodoPage } from './pages/TodoPage';
-
-test('add and complete todos', async ({ page }) => {
+test('adds and completes a todo', async ({ page }) => {
   const todoPage = new TodoPage(page);
 
   await todoPage.goto();
-  await todoPage.addTodo('Buy milk');
-  await todoPage.addTodo('Write tests');
+  await todoPage.addTodo('Ship docs');
 
-  // Auto-retry state assertions
-  await expect(todoPage).toHaveState({ itemCount: 2 });
+  const first = await todoPage.items.at(0);
+  await expect(first).toBeDefined();
+  await first!.toggle();
 
-  // Actions auto-verify their effects
-  const firstItem = await todoPage.items.at(0);
-  await firstItem!.toggle();
-
-  // Multiple state assertions (AND logic)
   await expect(todoPage).toHaveState({
+    itemCount: 1,
     completedCount: 1,
-    itemCount: 2,
   });
 });
 ```
 
-## Core Concepts
+## How The Pieces Fit
 
-### States
+1. `State` defines a live, semantic query.
+2. `Action` performs behavior.
+3. `Effect` defines when an action is complete and safe for the next step.
+4. `expect(...).toHaveState(...)` asserts state externally with polling.
 
-States are queryable properties that return the current value of some aspect of your component:
+Use effects for completion contracts and deliberate invariants. Keep scenario-specific outcomes in test assertions.
 
-```typescript
-class MyComponent extends PageComponent {
-  getText = this.State(() => this.rootLocator.innerText());
-  isVisible = this.State(() => this.rootLocator.isVisible());
+## Which Module Should I Use?
 
-  isEmpty = this.State(async () => (await this.getText()) === '');
-  hasContent = this.State(async () => (await this.getText()).length > 0);
-}
-```
+| If you want to... | Use |
+|---|---|
+| Keep Playwright ergonomics and add state-driven assertions | `@ayde/test/playwright` |
+| Use the core model outside Playwright | `@ayde/test/primitives` |
+| Build a custom adapter for another driver/locator system | `@ayde/test/pom-universal` |
 
-### Actions with Effects
+## Documentation Index
 
-Actions are methods that interact with the UI and declare expected state changes:
+- Playwright wrapper and POM usage: [`src/playwright/README.md`](src/playwright/README.md)
+- Framework-agnostic primitives: [`src/primitives/README.md`](src/primitives/README.md)
+- Universal POM base classes: [`src/pom-universal/README.md`](src/pom-universal/README.md)
 
-```typescript
-class Checkbox extends PageComponent {
-  isChecked = this.State(() => this.rootLocator.isChecked());
+## Stability
 
-  // Single effect
-  toggle = this.Action(
-    () => this.rootLocator.click(),
-    this.Effect(this.isChecked, prev => !prev())
-  );
-
-  // Static value effect
-  check = this.Action(
-    async () => {
-      if (!(await this.isChecked())) await this.toggle();
-    },
-    this.Effect(this.isChecked, true)
-  );
-
-  // Multiple effects
-  resetAndCheck = this.Action(
-    async () => { /* ... */ },
-    this.Effect(
-      [this.someState, 'value'],
-      [this.isChecked, true]
-    )
-  );
-}
-```
-
-#### The `prev()` Function
-
-Use `prev()` in effect values to reference state values **before the action executed**:
-
-```typescript
-// No args: returns current effect's state value
-toggle = this.Action(
-  () => this.checkbox.click(),
-  this.Effect(this.isCompleted, prev => !prev())
-);
-
-increment = this.Action(
-  () => this.button.click(),
-  this.Effect(this.count, prev => prev() + 1)
-);
-```
-
-For cross-state effects, use `prev(state)` to read another state's before-value. **Note:** The state must be included in the effects array to be accessible via `prev()`:
-
-```typescript
-swapStates = this.Action(
-  async () => { /* ... */ },
-  this.Effect(
-    [this.stateA, prev => prev(this.stateB)],
-    [this.stateB, prev => prev(this.stateA)]
-  )
-);
-```
-
-#### Handling Action Parameters
-
-For actions that need parameters affecting the expected effect:
-
-```typescript
-edit = this.Action((newText: string) => ({
-  execute: async () => {
-    await this.input.dblclick();
-    await this.input.fill(newText);
-    await this.input.press('Enter');
-  },
-  effects: this.Effect(this.getText, newText),
-}));
-```
-
-### Auto-Retrying Assertions
-
-Use `toHaveState` for assertions that poll until state matches, or time out:
-
-```typescript
-import { expect } from '@ayde/test/playwright';
-
-// Single state
-await expect(component).toHaveState({ isVisible: true });
-
-// Multiple states (AND logic)
-await expect(todoPage).toHaveState({
-  itemCount: 5,
-  isLoading: false,
-});
-
-// With predicate
-await expect(todoPage).toHaveState({ itemCount: (n: number) => n > 3 });
-
-// With timeout
-await expect(todoPage).toHaveState({ isReady: true }, { timeout: 10000 });
-
-// With stability requirement
-await expect(todoPage).toHaveState({ isVisible: true }, { stableFor: 250 });
-```
-
-### Waiting on Individual States
-
-Use `state.waitFor` to wait on a single state with optional predicates and stability:
-
-```typescript
-// Exact value
-await todoPage.isVisible.waitFor(true);
-
-// Predicate
-await todoPage.itemCount.waitFor(count => count > 3, { timeout: 5000 });
-
-// Stable for duration
-await todoPage.isVisible.waitFor(true, { timeout: 5000, stableFor: 250 });
-```
-
-### Child Components and Collections
-
-#### Single Child
-
-Use `this.Child()` to compose child components:
-
-```typescript
-class TodoItem extends PageComponent {
-  checkbox = this.Child(PageElement, this.rootLocator.locator('.toggle'));
-  label = this.Child(PageElement, this.rootLocator.locator('label'));
-}
-```
-
-#### Collections
-
-Use `this.ChildCollection()` for multiple items of the same type:
-
-```typescript
-class TodoPage extends PageObject {
-  items = this.ChildCollection(TodoItem, this.page.locator('.todo-list li'));
-}
-```
-
-#### Collection Methods
-
-Collections provide methods for accessing and filtering items:
-
-```typescript
-// Access by index
-const firstItem = await todoPage.items.at(0);  // TodoItem | undefined
-const allItems = await todoPage.items.all();   // TodoItem[]
-const count = await todoPage.items.count();    // number
-
-// Filter with exact value match
-const completed = todoPage.items.filter({ isCompleted: true });
-const activeItems = await completed.all();
-
-// Filter with predicate function
-const longItems = todoPage.items.filter({
-  getText: (text) => text.length > 20
-});
-
-// Multiple conditions (AND logic)
-const urgentActive = todoPage.items.filter({
-  isCompleted: false,
-  getText: (text) => text.includes('urgent')
-});
-
-// Chaining filters
-const filtered = todoPage.items
-  .filter({ isCompleted: true })
-  .filter({ getText: (t) => t.length > 5 });
-
-// Find single item
-const milk = await todoPage.items.find({ getText: 'Buy milk' });
-const longItem = await todoPage.items.find({
-  getText: (text) => text.length > 50
-});
-```
-
-## Class Hierarchy
-
-```
-PageFragment (base, has page)
-├── PageObject (full pages)
-└── PageNode (rooted to locator)
-    ├── PageComponent (reusable UI component)
-    └── PageElement (simple element wrapper)
-```
-
-## Exports
-
-### `@ayde/test/playwright`
-
-Drop-in replacement for `@playwright/test`. Re-exports everything from Playwright plus the extended `test` and `expect` with `toHaveState` support.
-
-```typescript
-import { test, expect, defineConfig, devices } from '@ayde/test/playwright';
-```
-
-### `@ayde/test/playwright/pom`
-
-Page Object Model classes for building type-safe page abstractions.
-
-```typescript
-import {
-  PageObject,
-  PageComponent,
-  PageElement,
-  PageFragment,
-  PageNode,
-  PageNodeCollection,
-} from '@ayde/test/playwright/pom';
-import type { ActionFunction } from '@ayde/test/playwright/pom';
-```
-
-### `@ayde/test/playwright/reporter`
-
-Reporter types for custom Playwright reporters.
-
-```typescript
-import type { Reporter } from '@ayde/test/playwright/reporter';
-```
-
-### `@ayde/test/primitives`
-
-Framework-independent building blocks. See [`src/primitives/README.md`](src/primitives/README.md) for full documentation.
-
-```typescript
-import {
-  State, States, Action, Actions, Collection,
-  waitForStates,
-  StateTimeoutError, ActionEffectError,
-} from '@ayde/test/primitives';
-import type {
-  StateFunction, ActionFunction,
-  EffectEntry, Effects, EffectValue,
-  FilterExpectations, StateMismatch,
-} from '@ayde/test/primitives';
-```
+Current package version is beta (`0.x`). APIs may evolve while the model is being refined.
 
 ## License
 

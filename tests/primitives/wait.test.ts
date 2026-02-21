@@ -1,19 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { State } from '../../src/primitives/state';
-import { waitForStates } from '../../src/primitives/wait';
+import { waitFor } from '../../src/primitives/wait';
 import { StateTimeoutError } from '../../src/primitives/errors';
 
-test.describe('waitForStates()', () => {
+test.describe('waitFor()', () => {
   test('resolves immediately when state already matches', async () => {
     const count = State(async () => 5);
-    await waitForStates([[count, 5]], { timeout: 1000 });
+    await waitFor([[count, 5]], { timeout: 1000 });
   });
 
   test('resolves when state changes to expected value', async () => {
     let value = 0;
     const count = State(async () => value);
 
-    const promise = waitForStates([[count, 5]], { timeout: 2000 });
+    const promise = waitFor([[count, 5]], { timeout: 2000 });
     setTimeout(() => { value = 5; }, 50);
     await promise;
   });
@@ -25,7 +25,7 @@ test.describe('waitForStates()', () => {
     const itemCount = State(async () => count);
     const isLoading = State(async () => loading);
 
-    const promise = waitForStates([
+    const promise = waitFor([
       [itemCount, 3],
       [isLoading, false],
     ], { timeout: 2000 });
@@ -39,7 +39,7 @@ test.describe('waitForStates()', () => {
     let count = 0;
     const itemCount = State(async () => count);
 
-    const promise = waitForStates(
+    const promise = waitFor(
       [[itemCount, ((n: number) => n >= 5) as (v: unknown) => boolean]],
       { timeout: 2000 },
     );
@@ -55,7 +55,7 @@ test.describe('waitForStates()', () => {
     const active = State(async () => false).named('isActive');
 
     try {
-      await waitForStates([
+      await waitFor([
         [count, 5],
         [active, true],
       ], { timeout: 200 });
@@ -75,7 +75,7 @@ test.describe('waitForStates()', () => {
   });
 
   test('resolves immediately with empty expectations', async () => {
-    await waitForStates([], { timeout: 100 });
+    await waitFor([], { timeout: 100 });
   });
 
   test('stableFor requires expectations to hold for duration', async () => {
@@ -83,12 +83,37 @@ test.describe('waitForStates()', () => {
     const count = State(async () => value);
 
     const start = Date.now();
-    const promise = waitForStates([[count, 5]], { timeout: 3000, stableFor: 200 });
+    const promise = waitFor([[count, 5]], { timeout: 3000, stableFor: 200 });
 
     value = 5;
     await promise;
 
     const elapsed = Date.now() - start;
     expect(elapsed).toBeGreaterThanOrEqual(150); // stableFor period (with some tolerance)
+  });
+
+  test('direct form: waitFor(state, value)', async () => {
+    const count = State(async () => 5);
+    await waitFor(count, 5);
+  });
+
+  test('direct form: waitFor(state, predicate, options)', async () => {
+    let value = 0;
+    const count = State(async () => value);
+    const promise = waitFor(count, (n: number) => n >= 5, { timeout: 2000 });
+    setTimeout(() => { value = 5; }, 50);
+    await promise;
+  });
+
+  test('single tuple form: waitFor([state, value])', async () => {
+    const count = State(async () => 5);
+    await waitFor([count, 5]);
+  });
+
+  test('sleep form: waitFor(ms)', async () => {
+    const start = Date.now();
+    await waitFor(100);
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(80);
   });
 });

@@ -1,5 +1,5 @@
 import type { WaitForStateOptions } from './wait';
-import { waitForStates } from './wait';
+import { waitFor } from './wait';
 
 // ============ Branding Symbols ============
 
@@ -53,7 +53,7 @@ export function brandState<R>(fn: () => Promise<R>): StateFunction<R> {
     expected: R | ((value: R) => boolean),
     options?: WaitForStateOptions,
   ): Promise<void> => {
-    return waitForStates([[state, expected]], options);
+    return waitFor([[state, expected]], options);
   };
 
   return state;

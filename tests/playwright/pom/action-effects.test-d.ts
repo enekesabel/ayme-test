@@ -3,12 +3,13 @@ import type { ActionFunction } from '../../../src/playwright/pom';
 import type { StateFunction } from '../../../src/primitives';
 
 /**
- * Type tests for Action effects with this.Effect.
- * This file validates that:
- * - Actions require effects to be declared
- * - Effect value types are checked against state return types
- * - prev() returns correct type for current effect's state
- * - prev(state) returns correct type for any state
+ * Type tests for Action + Effect API.
+ * Validates:
+ * - Single effect type safety via this.Effect(state, value)
+ * - predicate effects can inspect current value (and optionally previous snapshot)
+ * - Multi-effect via this.Effect(deps, compute) for cross-state
+ * - this.Effect(this, compute) form for auto-discovered states
+ * - Factory form with object return
  */
 
 // ============ Basic Single Effects ============
@@ -18,7 +19,6 @@ class BasicComponent extends PageComponent {
   numState = this.State(async () => 42);
   strState = this.State(async () => 'hello');
 
-  // Static value effects
   setBoolTrue = this.Action(
     async () => {},
     this.Effect(this.boolState, true)
@@ -39,29 +39,27 @@ class BasicComponent extends PageComponent {
     this.Effect(this.strState, 'world')
   );
 
-  // prev() with no arg - uses current effect's state
   toggleBool = this.Action(
     async () => {},
-    this.Effect(this.boolState, prev => !prev())
+    this.Effect(this.boolState, (cur, prev) => cur === !prev)
   );
 
   incrementNum = this.Action(
     async () => {},
-    this.Effect(this.numState, prev => prev() + 1)
+    this.Effect(this.numState, (cur, prev) => cur === prev + 1)
   );
 
   appendStr = this.Action(
     async () => {},
-    this.Effect(this.strState, prev => prev() + '!')
+    this.Effect(this.strState, (cur, prev) => cur === prev + '!')
   );
 
-  // Multiple effects with this.Effect
   multipleEffects = this.Action(
     async () => {},
-    this.Effect(
-      [this.boolState, prev => !prev()],
-      [this.numState, 42]
-    )
+    this.Effect({ boolState: this.boolState, numState: this.numState }, prev => ({
+      boolState: !prev.boolState,
+      numState: 42,
+    }))
   );
 }
 
@@ -92,41 +90,41 @@ class InvalidEffects extends PageComponent {
 
   wrongPrevReturn = this.Action(
     async () => {},
-    // @ts-expect-error - prev function returns string, not boolean
-    this.Effect(this.boolState, prev => 'wrong string')
-  );
-
-  // Multiple effects with wrong type
-  wrongTypeInMultiple = this.Action(
-    async () => {},
-    // @ts-expect-error - first effect has wrong type
-    this.Effect(
-      [this.boolState, 'not a boolean'],
-      [this.numState, 42]
-    )
+    // @ts-expect-error - predicate must return boolean
+    this.Effect(this.boolState, (_cur: boolean) => 'wrong string')
   );
 }
 
-// ============ Cross-State Effects ============
+// ============ Cross-State Effects via Effect(deps) ============
 
 class CrossStateComponent extends PageComponent {
   stateA = this.State(async () => 10);
   stateB = this.State(async () => 20);
   stateC = this.State(async () => 0);
 
-  // Effect that reads other state values via prev(state)
   swapAB = this.Action(
     async () => {},
-    this.Effect(
-      [this.stateA, prev => prev(this.stateB)],
-      [this.stateB, prev => prev(this.stateA)]
-    )
+    this.Effect({ stateA: this.stateA, stateB: this.stateB }, prev => ({
+      stateA: prev.stateB,
+      stateB: prev.stateA,
+    }))
   );
 
-  // Effect that reads multiple states
-  sumAll = this.Action(
+  sumIntoC = this.Action(
     async () => {},
-    this.Effect(this.stateC, prev => prev(this.stateA) + prev(this.stateB))
+    this.Effect({ stateA: this.stateA, stateB: this.stateB, stateC: this.stateC }, prev => ({
+      stateC: prev.stateA + prev.stateB,
+    }))
+  );
+
+  // Invalid key in return — stateC not in deps
+  invalidKey = this.Action(
+    async () => {},
+    // @ts-expect-error - stateC is not in the deps object
+    this.Effect({ stateA: this.stateA, stateB: this.stateB }, prev => ({
+      stateA: prev.stateB,
+      stateC: 999,
+    }))
   );
 }
 
@@ -136,19 +134,17 @@ class FactoryComponent extends PageComponent {
   getText = this.State(async () => 'initial');
   itemCount = this.State(async () => 0);
 
-  // Factory form with single effect
   edit = this.Action((newText: string) => ({
     execute: async () => {},
     effects: this.Effect(this.getText, newText),
   }));
 
-  // Factory form with multiple effects
   complexEdit = this.Action((newText: string, increment: number) => ({
     execute: async () => {},
-    effects: this.Effect(
-      [this.getText, newText],
-      [this.itemCount, prev => prev() + increment]
-    ),
+    effects: this.Effect({ getText: this.getText, itemCount: this.itemCount }, prev => ({
+      getText: newText,
+      itemCount: prev.itemCount + increment,
+    })),
   }));
 }
 
@@ -161,7 +157,6 @@ const _complexEditCheck: ActionFunction<[string, number], void> = null as unknow
 
 // ============ State Type Inference ============
 
-// Verify StateFunction brand carries correct return type
 type _BoolStateCheck = BasicComponent['boolState'] extends StateFunction<boolean> ? true : never;
 const _boolStateOk: _BoolStateCheck = true;
 
@@ -173,7 +168,6 @@ const _strStateOk: _StrStateCheck = true;
 
 // ============ Action Type Verification ============
 
-// Verify Action returns correct ActionFunction type
 type _ToggleBoolCheck = BasicComponent['toggleBool'] extends ActionFunction<[], void> ? true : never;
 const _toggleBoolOk: _ToggleBoolCheck = true;
 

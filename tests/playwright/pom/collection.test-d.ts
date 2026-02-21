@@ -1,4 +1,5 @@
-import { PageComponent, PageNodeCollection } from '../../../src/playwright/pom';
+import { PageComponent } from '../../../src/playwright/pom';
+import type { Collection } from '../../../src/primitives';
 
 /**
  * Type tests for Collection filter() and find() methods.
@@ -13,15 +14,10 @@ class TestItem extends PageComponent {
   getText = this.State(async () => 'hello');
   getCount = this.State(async () => 42);
   isCompleted = this.State(async () => false);
-  
-  toggle = this.Action(
-    async () => {},
-    this.Effect(this.isCompleted, prev => !prev())
-  );
 }
 
 // Mock collection for type testing
-declare const items: PageNodeCollection<TestItem>;
+declare const items: Collection<TestItem>;
 
 // ============ Valid filter() calls ============
 

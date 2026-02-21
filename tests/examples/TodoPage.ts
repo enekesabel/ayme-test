@@ -1,4 +1,4 @@
-import { PageObject, PageComponent, PageElement } from '../../src/playwright/pom';
+import { PageObject, PageComponent } from '../../src/playwright/pom';
 
 /**
  * A reusable checkbox component.
@@ -8,7 +8,7 @@ export class Checkbox extends PageComponent {
 
   toggle = this.Action(
     () => this.rootLocator.click(),
-    this.Effect(this.isChecked, prev => !prev())
+    this.Effect(this.isChecked, (cur, prev) => cur === !prev)
   );
 
   check = this.Action(
@@ -44,20 +44,19 @@ export class NewTodoInput extends PageComponent {
 
 /**
  * Represents a single TODO item in the list.
- * Demonstrates this.Child() for composing components.
  */
 export class TodoItem extends PageComponent {
-  checkbox = this.Child(Checkbox, this.rootLocator.locator('.toggle'));
-  label = this.Child(PageElement, this.rootLocator.locator('label'));
-  destroyButton = this.Child(PageElement, this.rootLocator.locator('.destroy'));
-  editInput = this.Child(PageElement, this.rootLocator.locator('.edit'));
+  checkbox = new Checkbox(this.rootLocator.locator('.toggle'));
+  label = this.rootLocator.locator('label');
+  destroyButton = this.rootLocator.locator('.destroy');
+  editInput = this.rootLocator.locator('.edit');
 
-  getText = this.State(() => this.label.rootLocator.innerText());
+  getText = this.State(() => this.label.innerText());
   isCompleted = this.State(() => this.checkbox.isChecked());
 
   toggle = this.Action(
     () => this.checkbox.toggle(),
-    this.Effect(this.isCompleted, prev => !prev())
+    this.Effect(this.isCompleted, (cur, prev) => cur === !prev)
   );
 
   markAsCompleted = this.Action(
@@ -72,14 +71,14 @@ export class TodoItem extends PageComponent {
 
   async delete() {
     await this.rootLocator.hover();
-    await this.destroyButton.rootLocator.click();
+    await this.destroyButton.click();
   }
 
   edit = this.Action((newText: string) => ({
     execute: async () => {
-      await this.label.rootLocator.dblclick();
-      await this.editInput.rootLocator.fill(newText);
-      await this.editInput.rootLocator.press('Enter');
+      await this.label.dblclick();
+      await this.editInput.fill(newText);
+      await this.editInput.press('Enter');
     },
     effects: this.Effect(this.getText, newText),
   }));
@@ -87,24 +86,23 @@ export class TodoItem extends PageComponent {
 
 /**
  * Represents the TodoMVC page.
- * Demonstrates this.Child() and this.ChildCollection() for composition.
  */
 export class TodoPage extends PageObject {
-  newTodoInput = this.Child(NewTodoInput, this.page.locator('.new-todo'));
-  items = this.ChildCollection(TodoItem, this.page.locator('.todo-list li'));
-  toggleAllCheckbox = this.Child(Checkbox, this.page.locator('.toggle-all'));
-  clearCompletedButton = this.Child(PageElement, this.page.locator('.clear-completed'));
-  itemsLeftCounter = this.Child(PageElement, this.page.locator('.todo-count'));
-  filterAllLink = this.Child(PageElement, this.page.locator('.filters a', { hasText: 'All' }));
-  filterActiveLink = this.Child(PageElement, this.page.locator('.filters a', { hasText: 'Active' }));
-  filterCompletedLink = this.Child(PageElement, this.page.locator('.filters a', { hasText: 'Completed' }));
+  newTodoInput = new NewTodoInput(this.page.locator('.new-todo'));
+  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
+  toggleAllCheckbox = new Checkbox(this.page.locator('.toggle-all'));
+  clearCompletedButton = this.page.locator('.clear-completed');
+  itemsLeftCounter = this.page.locator('.todo-count');
+  filterAllLink = this.page.locator('.filters a', { hasText: 'All' });
+  filterActiveLink = this.page.locator('.filters a', { hasText: 'Active' });
+  filterCompletedLink = this.page.locator('.filters a', { hasText: 'Completed' });
 
   itemCount = this.State(() => this.items.count());
   completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
   activeCount = this.State(() => this.items.filter({ isCompleted: false }).count());
-  itemsLeftText = this.State(() => this.itemsLeftCounter.rootLocator.innerText());
-  isClearCompletedVisible = this.State(() => this.clearCompletedButton.rootLocator.isVisible());
-  activeFilter = this.State(async () => {
+  itemsLeftText = this.State(() => this.itemsLeftCounter.innerText());
+  isClearCompletedVisible = this.State(() => this.clearCompletedButton.isVisible());
+  activeFilter = this.State(async (): Promise<string> => {
     const url = this.page.url();
     if (url.includes('#/active')) return 'active';
     if (url.includes('#/completed')) return 'completed';
@@ -119,7 +117,6 @@ export class TodoPage extends PageObject {
   addTodo = this.Action(
     async (text: string) => {
       await this.newTodoInput.addTodo(text);
-      // Wait for item to appear
       const startTime = Date.now();
       while (Date.now() - startTime < 5000) {
         const item = await this.findTodoByText(text);
@@ -127,7 +124,7 @@ export class TodoPage extends PageObject {
         await new Promise(r => setTimeout(r, 100));
       }
     },
-    this.Effect(this.itemCount, prev => prev() + 1)
+    this.Effect(this.itemCount, (cur, prev) => cur === prev + 1)
   );
 
   async addTodos(texts: string[]) {
@@ -141,18 +138,18 @@ export class TodoPage extends PageObject {
   }
 
   clearCompleted = this.Action(
-    () => this.clearCompletedButton.rootLocator.click(),
+    () => this.clearCompletedButton.click(),
     this.Effect(this.completedCount, 0)
   );
 
   filterAll = this.Action(
-    () => this.filterAllLink.rootLocator.click(),
+    () => this.filterAllLink.click(),
     this.Effect(this.activeFilter, 'all')
   );
 
   filterActive = this.Action(
     async () => {
-      await this.filterActiveLink.rootLocator.click();
+      await this.filterActiveLink.click();
       await this.page.waitForURL(/.*#\/active/);
     },
     this.Effect(this.activeFilter, 'active')
@@ -160,13 +157,12 @@ export class TodoPage extends PageObject {
 
   filterCompleted = this.Action(
     async () => {
-      await this.filterCompletedLink.rootLocator.click();
+      await this.filterCompletedLink.click();
       await this.page.waitForURL(/.*#\/completed/);
     },
     this.Effect(this.activeFilter, 'completed')
   );
 
-  // Custom query methods
   async getTodoAt(index: number): Promise<TodoItem | undefined> {
     return this.items.at(index);
   }

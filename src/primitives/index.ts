@@ -4,19 +4,21 @@ export type { StateFunction } from './state';
 
 // Action
 export { Action, Actions } from './action';
-export type { ActionFunction } from './action';
+export type { ActionFunction, ActionMeta } from './action';
 
-// Effects
+// Effect
+export { Effect } from './effect';
 export type {
-  EffectEntry,
   EffectValue,
-  Effects,
-  PrevSnapshot,
+  EffectResult,
 } from './effect';
 
+// Action Definition
+export type { ActionDefinition } from './action';
+
 // Wait
-export { waitForStates } from './wait';
-export type { WaitForStatesOptions, WaitForStateOptions } from './wait';
+export { waitFor } from './wait';
+export type { WaitForOptions, WaitForStateOptions } from './wait';
 
 // Collection
 export { Collection } from './collection';
