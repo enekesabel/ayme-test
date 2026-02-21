@@ -4,120 +4,190 @@ import { StateBrandSymbol } from './state';
 // ============ Effect Types ============
 
 /**
- * Callable snapshot for accessing previous state values.
- * Used in effect functions to compare before/after.
+ * Effect value: static value or predicate.
+ * - `(current) => boolean`: predicate on current value
+ * - `(current, prev) => boolean`: predicate with previous snapshot (effects only)
  */
-export interface PrevSnapshot<CurrentT = unknown> {
-  /** Returns the previous value of the current effect's state */
-  (): CurrentT;
-  /** Returns the previous value of the specified state */
-  <T>(state: StateFunction<T>): T;
+export type EffectValue<T> =
+  | T
+  | ((current: T) => boolean)
+  | ((current: T, prev: T) => boolean);
+
+// ============ EffectResult — unified return from Effect() ============
+
+/** @internal */
+const EffectSymbol: unique symbol = Symbol('Effect');
+
+/** @internal */
+export type EffectKind = 'single' | 'multi';
+
+/** Map of named state dependencies. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type StateDeps = Record<string, StateFunction<any>>;
+
+/** Resolved before-values keyed by dependency name. */
+export type ResolvedDeps<D extends StateDeps> = {
+  [K in keyof D]: D[K] extends StateFunction<infer T> ? T : never;
+};
+
+/** Expected values keyed by dependency name (all optional — only asserted keys matter). */
+export type ExpectedValues<D extends StateDeps> = {
+  [K in keyof D]?: D[K] extends StateFunction<infer T> ? EffectValue<T> : never;
+};
+
+/**
+ * Unified result of an `Effect()` call.
+ * Recognized by the `Action()` runtime during effect verification.
+ */
+export interface EffectResult {
+  /** @internal */
+  readonly [EffectSymbol]: true;
+  /** @internal */
+  readonly kind: EffectKind;
+  /** @internal — for single effects */
+  readonly state?: StateFunction<unknown>;
+  /** @internal — for single effects */
+  readonly value?: EffectValue<unknown>;
+  /** @internal — for multi effects */
+  readonly deps?: StateDeps;
+  /** @internal — for multi effects */
+  readonly compute?: (prev: Record<string, unknown>) => Record<string, unknown>;
 }
 
-/**
- * Effect value: static value or function computing expected from snapshot.
- */
-export type EffectValue<T> = T | ((prev: PrevSnapshot<T>) => T);
+// ============ Effect() function — overloads ============
 
 /**
- * A single effect entry: a state paired with its expected value.
+ * Define a single effect: one state with an expected value.
+ *
+ * @example
+ * ```typescript
+ * Effect(isChecked, true)
+ * Effect(isChecked, cur => cur === true)
+ * Effect(count, (cur, prev) => cur === prev + 1)
+ * Effect(count, 0)
+ * ```
  */
-export type EffectEntry<T> = readonly [StateFunction<T>, EffectValue<T>];
+export function Effect<T>(
+  state: StateFunction<T>,
+  value: EffectValue<T>,
+): EffectResult;
 
 /**
- * Runtime type for effects — single entry or array of entries.
- * @internal
+ * Define multiple effects with cross-state support.
+ *
+ * `deps` names the states to snapshot. The `compute` callback receives their
+ * before-values and returns expected after-values for any subset.
+ *
+ * @example
+ * ```typescript
+ * Effect({ count, label }, prev => ({
+ *   count: (cur, prevCount) => cur === prev.label.length,
+ *   label: String(prev.count),
+ * }))
+ * ```
  */
-export type Effects = EffectEntry<unknown> | readonly EffectEntry<unknown>[];
+export function Effect<D extends StateDeps, R extends ExpectedValues<D>>(
+  deps: D,
+  compute: (prev: ResolvedDeps<D>) => R & { [K in Exclude<keyof R, keyof D>]: never },
+): EffectResult;
 
-// ============ Type Validation ============
+// Implementation
+export function Effect(
+  stateOrDeps: StateFunction<unknown> | StateDeps,
+  valueOrCompute: EffectValue<unknown> | ((prev: Record<string, unknown>) => Record<string, unknown>),
+): EffectResult {
+  if (typeof stateOrDeps === 'function' && StateBrandSymbol in stateOrDeps) {
+    return {
+      [EffectSymbol]: true,
+      kind: 'single',
+      state: stateOrDeps,
+      value: valueOrCompute as EffectValue<unknown>,
+    };
+  }
+
+  return {
+    [EffectSymbol]: true,
+    kind: 'multi',
+    deps: stateOrDeps as StateDeps,
+    compute: valueOrCompute as (prev: Record<string, unknown>) => Record<string, unknown>,
+  };
+}
 
 /** @internal */
-type ValidateEffect<T> =
-  T extends readonly [StateFunction<infer V>, infer Value]
-    ? Value extends EffectValue<V>
-      ? readonly [StateFunction<V>, EffectValue<V>]
-      : never
-    : never;
-
-/** @internal */
-export type ValidateEffects<T extends readonly unknown[]> = {
-  [K in keyof T]: ValidateEffect<T[K]>
-};
+export function isEffectResult(value: unknown): value is EffectResult {
+  return typeof value === 'object' && value !== null && EffectSymbol in value;
+}
 
 // ============ Internal Helpers ============
 
 /**
- * Checks if effects is a single [state, value] tuple or an array of tuples.
+ * Captures snapshot for a single effect.
  * @internal
  */
-export function isSingleEffect(effects: Effects): effects is EffectEntry<unknown> {
-  if (!Array.isArray(effects) || effects.length === 0) return false;
-  const first = effects[0];
-  return typeof first === 'function' && StateBrandSymbol in first;
+export async function captureSingleSnapshot(
+  result: EffectResult,
+): Promise<unknown> {
+  return result.state!();
 }
 
 /**
- * Normalizes effects to an array of effect entries.
+ * Captures snapshot for multi effects.
  * @internal
  */
-export function normalizeEffects(effects: Effects): readonly EffectEntry<unknown>[] {
-  if (isSingleEffect(effects)) return [effects];
-  return effects as readonly EffectEntry<unknown>[];
-}
-
-/**
- * Captures the current values of all states referenced in effects.
- * @internal
- */
-export async function captureSnapshot(
-  effectEntries: readonly EffectEntry<unknown>[],
-): Promise<Map<StateFunction<unknown>, unknown>> {
-  const snapshot = new Map<StateFunction<unknown>, unknown>();
-  for (const [state] of effectEntries) {
-    if (!snapshot.has(state)) {
-      snapshot.set(state, await state());
-    }
+export async function captureMultiSnapshot(
+  result: EffectResult,
+): Promise<Record<string, unknown>> {
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, state] of Object.entries(result.deps!)) {
+    snapshot[key] = await state();
   }
   return snapshot;
 }
 
 /**
- * Creates a PrevSnapshot bound to a specific effect entry's state.
+ * Computes expected value from a single effect and its before-value.
  * @internal
  */
-export function createPrevSnapshot<T>(
-  snapshot: Map<StateFunction<unknown>, unknown>,
-  currentState: StateFunction<T>,
-): PrevSnapshot<T> {
-  const prev = function <U>(state?: StateFunction<U>): T | U {
-    if (state === undefined) return snapshot.get(currentState) as T;
-    if (!snapshot.has(state)) {
-      throw new Error(
-        'State not found in snapshot. Include all states you access via prev() in your effects array.',
-      );
-    }
-    return snapshot.get(state) as U;
-  };
-  return prev as PrevSnapshot<T>;
+export function computeSingleExpectation(
+  result: EffectResult,
+  beforeValue: unknown,
+): [StateFunction<unknown>, unknown] {
+  const effectValue = result.value!;
+  if (typeof effectValue === 'function') {
+    return [result.state!, (current: unknown) => {
+      return (effectValue as (current: unknown, prev: unknown) => boolean)(current, beforeValue);
+    }];
+  }
+  return [result.state!, effectValue];
 }
 
 /**
- * Computes expected values from effect entries and a before-state snapshot.
+ * Computes expected values from multi effects and their before-snapshot.
  * @internal
  */
-export function computeExpectations(
-  effectEntries: readonly EffectEntry<unknown>[],
-  beforeSnapshot: Map<StateFunction<unknown>, unknown>,
+export function computeMultiExpectations(
+  result: EffectResult,
+  beforeSnapshot: Record<string, unknown>,
 ): Array<[StateFunction<unknown>, unknown]> {
+  const expectedValues = result.compute!(beforeSnapshot);
   const expectations: Array<[StateFunction<unknown>, unknown]> = [];
-  for (const [state, effectValue] of effectEntries) {
-    if (typeof effectValue === 'function') {
-      const prev = createPrevSnapshot(beforeSnapshot, state);
-      expectations.push([state, effectValue(prev)]);
+
+  for (const [key, expected] of Object.entries(expectedValues)) {
+    if (expected === undefined) continue;
+    const state = result.deps![key];
+    if (!state) continue;
+
+    if (typeof expected === 'function') {
+      expectations.push([state, (current: unknown) => {
+        return (expected as (current: unknown, prev: unknown) => boolean)(
+          current,
+          beforeSnapshot[key],
+        );
+      }]);
     } else {
-      expectations.push([state, effectValue]);
+      expectations.push([state, expected]);
     }
   }
+
   return expectations;
 }

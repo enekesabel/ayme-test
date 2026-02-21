@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: [
     'src/primitives/index.ts',
-    'src/playwright/pom/index.ts',
+    'src/pom-universal/index.ts',
     'src/playwright/index.ts',
     'src/playwright/reporter.ts',
   ],

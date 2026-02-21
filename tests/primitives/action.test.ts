@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { State } from '../../src/primitives/state';
 import { Action, Actions } from '../../src/primitives/action';
+import { Effect } from '../../src/primitives/effect';
 import { ActionEffectError, StateTimeoutError } from '../../src/primitives/errors';
 
 test.describe('Action() — fire-and-forget', () => {
@@ -21,38 +22,18 @@ test.describe('Action() — fire-and-forget', () => {
   });
 });
 
-test.describe('Action() — with static effects', () => {
+test.describe('Action() — with single Effect()', () => {
   test('verifies single effect after execution', async () => {
     let value = 0;
     const count = State(async () => value);
 
     const increment = Action(
       async () => { value++; },
-      [count, (prev: any) => prev() + 1],
+      Effect(count, (cur: number, prev: number) => cur === prev + 1),
     );
 
     await increment();
     expect(value).toBe(1);
-  });
-
-  test('verifies multiple effects after execution', async () => {
-    let count = 0;
-    let empty = true;
-
-    const itemCount = State(async () => count);
-    const isEmpty = State(async () => empty);
-
-    const addItem = Action(
-      async () => { count++; empty = false; },
-      [
-        [itemCount, (prev: any) => prev() + 1],
-        [isEmpty, false],
-      ],
-    );
-
-    await addItem();
-    expect(count).toBe(1);
-    expect(empty).toBe(false);
   });
 
   test('throws ActionEffectError when effects not met', async () => {
@@ -60,7 +41,7 @@ test.describe('Action() — with static effects', () => {
 
     const badAction = Action(
       async () => { /* doesn't change count */ },
-      [count, 99],
+      Effect(count, 99),
     ).named('badAction');
 
     try {
@@ -76,15 +57,37 @@ test.describe('Action() — with static effects', () => {
   });
 });
 
+test.describe('Action() — with multi Effect()', () => {
+  test('verifies multiple effects after execution', async () => {
+    let count = 0;
+    let empty = true;
+
+    const itemCount = State(async () => count);
+    const isEmpty = State(async () => empty);
+
+    const addItem = Action(
+      async () => { count++; empty = false; },
+      Effect({ itemCount, isEmpty }, prev => ({
+        itemCount: prev.itemCount + 1,
+        isEmpty: false,
+      })),
+    );
+
+    await addItem();
+    expect(count).toBe(1);
+    expect(empty).toBe(false);
+  });
+});
+
 test.describe('Action() — factory form', () => {
-  test('factory returns [execute, effects] tuple', async () => {
+  test('factory returns { execute, effects }', async () => {
     let name = 'old';
     const itemName = State(async () => name);
 
-    const rename = Action((newName: string) => [
-      async () => { name = newName; },
-      [itemName, newName],
-    ] as const);
+    const rename = Action((newName: string) => ({
+      execute: async () => { name = newName; },
+      effects: Effect(itemName, newName),
+    }));
 
     await rename('new');
     expect(name).toBe('new');
@@ -108,6 +111,51 @@ test.describe('Action().named()', () => {
   });
 });
 
+test.describe('Action().meta()', () => {
+  test('returns empty params for no-arg action', async () => {
+    const doSomething = Action(async () => {});
+    const meta = doSomething.meta();
+    expect(meta.params).toEqual([]);
+    expect(meta.name).toBeUndefined();
+  });
+
+  test('extracts param names from arrow function', async () => {
+    const greet = Action(async (name: string, count: number) => {
+      void name;
+      void count;
+    });
+    const meta = greet.meta();
+    expect(meta.params).toEqual(['name', 'count']);
+  });
+
+  test('returns name after .named()', async () => {
+    const doSomething = Action(async () => {}).named('doSomething');
+    const meta = doSomething.meta();
+    expect(meta.name).toBe('doSomething');
+    expect(meta.params).toEqual([]);
+  });
+
+  test('returns both name and params', async () => {
+    const addItem = Action(async (text: string) => {
+      void text;
+    }).named('addItem');
+    const meta = addItem.meta();
+    expect(meta.name).toBe('addItem');
+    expect(meta.params).toEqual(['text']);
+  });
+
+  test('extracts params from factory form', async () => {
+    let name = 'old';
+    const itemName = State(async () => name);
+    const rename = Action((newName: string) => ({
+      execute: async () => { name = newName; },
+      effects: Effect(itemName, newName),
+    }));
+    const meta = rename.meta();
+    expect(meta.params).toEqual(['newName']);
+  });
+});
+
 test.describe('Actions() bulk helper', () => {
   test('creates multiple named actions', async () => {
     let count = 0;
@@ -118,7 +166,7 @@ test.describe('Actions() bulk helper', () => {
     const { increment, setText } = Actions({
       increment: [
         async () => { count++; },
-        [itemCount, (prev: any) => prev() + 1],
+        Effect(itemCount, (cur: number, prev: number) => cur === prev + 1),
       ],
       setText: async (t: string) => { text = t; },
     });

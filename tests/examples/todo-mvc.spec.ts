@@ -149,7 +149,7 @@ test.describe('Action Effects System', () => {
       const item = await todoPage.getTodoAt(0);
       expect(await item!.isCompleted()).toBe(false);
 
-      // toggle action has effect: [isCompleted, prev => !prev()]
+      // toggle action has effect: [isCompleted, (cur, prev) => cur === !prev]
       // The action completes only after the effect is satisfied
       await item!.toggle();
 
@@ -166,7 +166,7 @@ test.describe('Action Effects System', () => {
       const item = await todoPage.getTodoAt(0);
       expect(await item!.isCompleted()).toBe(false);
 
-      // Effect: [isCompleted, prev => !prev()] waits for false => true
+      // Effect: [isCompleted, (cur, prev) => cur === !prev] waits for false => true
       await item!.toggle();
 
       // Direct query - effect already ensured state changed
@@ -182,7 +182,7 @@ test.describe('Action Effects System', () => {
       await item!.markAsCompleted();
       expect(await item!.isCompleted()).toBe(true);
 
-      // Effect: [isCompleted, prev => !prev()] waits for true => false
+      // Effect: [isCompleted, (cur, prev) => cur === !prev] waits for true => false
       await item!.toggle();
 
       // Direct query - effect already ensured state changed
@@ -198,7 +198,7 @@ test.describe('Action Effects System', () => {
       const beforeCount = await todoPage.itemCount();
       const beforeCompletedCount = await todoPage.completedCount();
 
-      // addTodo has effect: [itemCount, prev => prev(itemCount) + 1]
+      // addTodo has effect: [itemCount, (cur, prev) => cur === prev + 1]
       await todoPage.addTodo('First item');
 
       const afterCount = await todoPage.itemCount();
@@ -246,7 +246,7 @@ test.describe('Action Effects System', () => {
   });
 
   test.describe('Effect types', () => {
-    test('relative transition - toggle boolean (prev => !prev)', async ({ page }) => {
+    test('relative transition - toggle boolean ((cur, prev) => cur === !prev)', async ({ page }) => {
       const todoPage = new TodoPage(page);
       await todoPage.goto();
       await todoPage.addTodo('Relative test');
@@ -257,25 +257,25 @@ test.describe('Action Effects System', () => {
       let before = await item!.isCompleted();
       expect(before).toBe(false);
 
-      await item!.toggle(); // Effect: prev => !prev(isCompleted)
+      await item!.toggle(); // Effect: (cur, prev) => cur === !prev
       let after = await item!.isCompleted();
       expect(after).toBe(!before);
 
       // Second toggle: true => false
       before = after;
-      await item!.toggle(); // Effect: prev => !prev(isCompleted)
+      await item!.toggle(); // Effect: (cur, prev) => cur === !prev
       after = await item!.isCompleted();
       expect(after).toBe(!before);
     });
 
-    test('relative transition - increment number (prev => prev + 1)', async ({ page }) => {
+    test('relative transition - increment number ((cur, prev) => cur === prev + 1)', async ({ page }) => {
       const todoPage = new TodoPage(page);
       await todoPage.goto();
 
       const countBefore = await todoPage.itemCount();
       expect(countBefore).toBe(0);
 
-      // Effect: [itemCount, prev => prev(itemCount) + 1]
+      // Effect: [itemCount, (cur, prev) => cur === prev + 1]
       await todoPage.addTodo('Item 1');
       expect(await todoPage.itemCount()).toBe(countBefore + 1);
 
@@ -340,7 +340,7 @@ test.describe('Action Effects System', () => {
 
       expect(await todoPage.itemCount()).toBe(0);
 
-      // Effect: [itemCount, prev => prev(itemCount) + 1]
+      // Effect: [itemCount, (cur, prev) => cur === prev + 1]
       await todoPage.addTodo('First item');
 
       expect(await todoPage.itemCount()).toBe(1);
@@ -353,7 +353,7 @@ test.describe('Action Effects System', () => {
 
       expect(await todoPage.itemCount()).toBe(5);
 
-      // Effect: [itemCount, prev => prev(itemCount) + 1]
+      // Effect: [itemCount, (cur, prev) => cur === prev + 1]
       // Should work regardless of starting count
       await todoPage.addTodo('Item 6');
 
@@ -395,17 +395,17 @@ test.describe('Action Effects System', () => {
 
       // Before-state: false
       expect(await item!.isCompleted()).toBe(false);
-      await item!.toggle(); // prev => !prev(isCompleted)
+      await item!.toggle(); // (cur, prev) => cur === !prev
       expect(await item!.isCompleted()).toBe(true);
 
       // Before-state: true
       expect(await item!.isCompleted()).toBe(true);
-      await item!.toggle(); // prev => !prev(isCompleted)
+      await item!.toggle(); // (cur, prev) => cur === !prev
       expect(await item!.isCompleted()).toBe(false);
 
       // Before-state: false again
       expect(await item!.isCompleted()).toBe(false);
-      await item!.toggle(); // prev => !prev(isCompleted)
+      await item!.toggle(); // (cur, prev) => cur === !prev
       expect(await item!.isCompleted()).toBe(true);
     });
   });
@@ -419,10 +419,10 @@ test.describe('Action Effects System', () => {
       const item = await todoPage.getTodoAt(0);
 
       // If effect waiting fails, the test would fail here
-      // If effect succeeds, we know waitForStates worked
+      // If effect succeeds, we know waitFor worked
       await item!.markAsCompleted();
 
-      // If we reach here, the effect's waitForStates completed successfully
+      // If we reach here, the effect's waitFor completed successfully
       await expect(item!).toHaveState({ isCompleted: true });
     });
 
@@ -432,7 +432,7 @@ test.describe('Action Effects System', () => {
 
       const countBefore = await todoPage.itemCount();
 
-      // This action has effect [itemCount, prev => prev(itemCount) + 1]
+      // This action has effect [itemCount, (cur, prev) => cur === prev + 1]
       // It should wait for itemCount to actually increment
       const addAction = todoPage.addTodo('Timing test');
 
@@ -498,7 +498,7 @@ test.describe('Action Effects System', () => {
       const countBefore = await todoPage.itemCount();
 
       // addTodos is a composed action that calls addTodo multiple times
-      // Each addTodo has effect: [itemCount, prev => prev(itemCount) + 1]
+      // Each addTodo has effect: [itemCount, (cur, prev) => cur === prev + 1]
       const textsToAdd = ['A', 'B', 'C'];
       await todoPage.addTodos(textsToAdd);
 
@@ -533,12 +533,12 @@ test.describe('Action Effects System', () => {
       let count = await todoPage.itemCount();
       expect(count).toBe(1);
 
-      // Before-state captured as 1, effect: prev => prev(itemCount) + 1 = 2
+      // Before-state captured as 1, effect: (cur, prev) => cur === prev + 1 = 2
       await todoPage.addTodo('Item 2');
       count = await todoPage.itemCount();
       expect(count).toBe(2);
 
-      // Before-state captured as 2, effect: prev => prev(itemCount) + 1 = 3
+      // Before-state captured as 2, effect: (cur, prev) => cur === prev + 1 = 3
       await todoPage.addTodo('Item 3');
       count = await todoPage.itemCount();
       expect(count).toBe(3);

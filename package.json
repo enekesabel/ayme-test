@@ -14,14 +14,14 @@
         "default": "./dist/primitives/index.cjs"
       }
     },
-    "./playwright/pom": {
+    "./pom-universal": {
       "import": {
-        "types": "./dist/playwright/pom/index.d.ts",
-        "default": "./dist/playwright/pom/index.js"
+        "types": "./dist/pom-universal/index.d.ts",
+        "default": "./dist/pom-universal/index.js"
       },
       "require": {
-        "types": "./dist/playwright/pom/index.d.cts",
-        "default": "./dist/playwright/pom/index.cjs"
+        "types": "./dist/pom-universal/index.d.cts",
+        "default": "./dist/pom-universal/index.cjs"
       }
     },
     "./playwright": {

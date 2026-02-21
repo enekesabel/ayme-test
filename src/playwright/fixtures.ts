@@ -1,8 +1,8 @@
 import { test as base, expect as playwrightExpect } from '@playwright/test';
-import type { PageFragment } from './pom/PageFragment';
+import type { PageFragment } from './pom';
 import type { StateFunction } from '../primitives/state';
 import type { StateKeys } from '../primitives/types';
-import { waitForStates } from '../primitives/wait';
+import { waitFor } from '../primitives/wait';
 
 // ============ Types ============
 
@@ -75,7 +75,7 @@ playwrightExpect.extend({
     }
 
     try {
-      await waitForStates(normalizedExpectations, {
+      await waitFor(normalizedExpectations, {
         timeout: options?.timeout,
         stableFor: options?.stableFor,
       });
