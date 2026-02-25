@@ -1,5 +1,5 @@
 {
-  "name": "@ayde/test",
+  "name": "@qaide/test",
   "version": "0.1.0-beta.0",
   "description": "State-driven, semantic web UI and E2E testing. Playwright adapter included.",
   "type": "module",
@@ -72,9 +72,9 @@
     "playwright",
     "automation",
     "web-testing",
-    "ayde"
+    "qaide"
   ],
-  "author": "Ayde",
+  "author": "qaide",
   "license": "MIT",
   "packageManager": "pnpm@10.4.1",
   "engines": {
@@ -82,12 +82,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/enekesabel/ayde-testing.git"
+    "url": "https://github.com/enekesabel/qaide-testing.git"
   },
   "bugs": {
-    "url": "https://github.com/enekesabel/ayde-testing/issues"
+    "url": "https://github.com/enekesabel/qaide-testing/issues"
   },
-  "homepage": "https://github.com/enekesabel/ayde-testing#readme",
+  "homepage": "https://github.com/enekesabel/qaide-testing#readme",
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"
   },

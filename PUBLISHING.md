@@ -1,6 +1,6 @@
-# Publishing Guide for @ayde/test
+# Publishing Guide for @qaide/test
 
-This guide walks you through publishing `@ayde/test` to npm for the first time and managing future releases.
+This guide walks you through publishing `@qaide/test` to npm for the first time and managing future releases.
 
 ## Prerequisites
 
@@ -18,19 +18,19 @@ This guide walks you through publishing `@ayde/test` to npm for the first time a
 2. Create an account (you can use GitHub OAuth for convenience)
 3. Verify your email address
 
-### Step 2: Create the @ayde Organization
+### Step 2: Create the @qaide Organization
 
-For scoped packages like `@ayde/test`, you need an npm organization:
+For scoped packages like `@qaide/test`, you need an npm organization:
 
 1. Log in to [npmjs.com](https://www.npmjs.com)
 2. Click your profile icon → "Add Organization"
-3. Enter organization name: `ayde`
+3. Enter organization name: `qaide`
 4. Choose a plan:
    - **Free**: Unlimited public packages (recommended for open source)
    - **Paid**: If you want private packages later
 5. Complete the setup
 
-> **Note**: Organization names are first-come-first-served. If "ayde" is taken, you'll need an alternative (e.g., `ayde-hq`, `ayde-dev`).
+> **Note**: Organization names are first-come-first-served. If "qaide" is taken, you'll need an alternative (e.g., `qaide-hq`, `qaide-dev`).
 
 ### Step 3: Log in to npm from Terminal
 
@@ -53,7 +53,7 @@ npm whoami
 ### Step 4: Verify Organization Access
 
 ```bash
-npm org ls ayde
+npm org ls qaide
 ```
 
 This should show you as a member.
@@ -88,8 +88,8 @@ npm publish --access public
 ### Verifying Publication
 
 After publishing:
-1. Visit https://www.npmjs.com/package/@ayde/test
-2. Try installing in another project: `npm install @ayde/test`
+1. Visit https://www.npmjs.com/package/@qaide/test
+2. Try installing in another project: `npm install @qaide/test`
 
 ---
 
@@ -162,7 +162,7 @@ For automated publishing (GitHub Actions, etc.):
 If you publish a broken version:
 
 ```bash
-npm deprecate @ayde/test@1.0.0 "This version has a critical bug, please upgrade"
+npm deprecate @qaide/test@1.0.0 "This version has a critical bug, please upgrade"
 ```
 
 ### Unpublishing (Use with Caution!)
@@ -170,7 +170,7 @@ npm deprecate @ayde/test@1.0.0 "This version has a critical bug, please upgrade"
 You can only unpublish within 72 hours of publishing:
 
 ```bash
-npm unpublish @ayde/test@1.0.0
+npm unpublish @qaide/test@1.0.0
 ```
 
 > ⚠️ **Warning**: Unpublishing can break other people's projects. Prefer deprecation.
@@ -189,7 +189,7 @@ Key fields for npm publishing (already configured):
 
 ```json
 {
-  "name": "@ayde/test",                    // Scoped package name
+  "name": "@qaide/test",                    // Scoped package name
   "version": "0.1.0-beta.0",              // Current version
   "type": "module",                        // ESM by default
   "files": ["dist"],                       // What gets published
@@ -229,7 +229,7 @@ npm version patch|minor|major
 npm pack --dry-run
 
 # View published package info
-npm info @ayde/test
+npm info @qaide/test
 ```
 
 ---
@@ -241,17 +241,17 @@ Add `--access public` to your publish command.
 
 ### "npm ERR! 403 Forbidden"
 - Check you're logged in: `npm whoami`
-- Check you have org access: `npm org ls ayde`
-- Verify the package name isn't taken: `npm info @ayde/test`
+- Check you have org access: `npm org ls qaide`
+- Verify the package name isn't taken: `npm info @qaide/test`
 
 ### "npm ERR! 402 Payment Required"
 Scoped packages default to private. Use `--access public`.
 
-### Organization name "ayde" is taken
+### Organization name "qaide" is taken
 Choose an alternative like:
-- `@ayde-dev/test`
-- `@ayde-hq/test`
-- `@useayde/test`
+- `@qaide-dev/test`
+- `@qaide-hq/test`
+- `@useqaide/test`
 
 Then update `package.json` accordingly.
 
@@ -261,7 +261,7 @@ Then update `package.json` accordingly.
 
 1. **Add badges to README**:
    ```markdown
-   [![npm version](https://badge.fury.io/js/%40ayde%2Ftest.svg)](https://www.npmjs.com/package/@ayde/test)
+   [![npm version](https://badge.fury.io/js/%40qaide%2Ftest.svg)](https://www.npmjs.com/package/@qaide/test)
    ```
 
 2. **Set up GitHub Actions** for automated testing and publishing

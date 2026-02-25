@@ -1,4 +1,4 @@
-# @ayde/test
+# @qaide/test
 
 State-driven, semantic web UI and E2E testing.
 
@@ -6,7 +6,7 @@ State-driven, semantic web UI and E2E testing.
 
 Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-`@ayde/test` offers a different model — define *what should be true* as named semantic queries (`State`), then assert those queries directly:
+`@qaide/test` offers a different model — define *what should be true* as named semantic queries (`State`), then assert those queries directly:
 
 - **`State` + `waitFor`** — framework-agnostic semantic state queries and polling assertions. Define facts about the system (`itemCount`, `isReady`) and wait for them to become true.
 - **Semantic POM** *(optional)* — structure tests with typed page objects and components. Each POM class encapsulates its states (`this.State(...)`) and collections (`this.Collection(...)`), keeping implementation details out of tests.
@@ -17,13 +17,13 @@ Implementation details stay in one place. Tests express intent and stay resilien
 ## Install
 
 ```bash
-npm install @ayde/test
+npm install @qaide/test
 ```
 
-If you're using the Playwright adapter ([`@ayde/test/playwright`](src/playwright/README.md)) 🎭, also install `@playwright/test`:
+If you're using the Playwright adapter ([`@qaide/test/playwright`](src/playwright/README.md)) 🎭, also install `@playwright/test`:
 
 ```bash
-npm install @playwright/test @ayde/test
+npm install @playwright/test @qaide/test
 ```
 
 Run tests with the standard Playwright runner:
@@ -35,7 +35,7 @@ npx playwright test
 ## Quick Start
 
 ```typescript
-import { test, expect, Action, PageObject, PageComponent } from '@ayde/test/playwright';
+import { test, expect, Action, PageObject, PageComponent } from '@qaide/test/playwright';
 
 class TodoItem extends PageComponent {
   private checkbox = this.root.locator('.toggle');
@@ -94,7 +94,7 @@ For the full 🎭 Playwright API reference (all exports, `@Action` step names, `
 ## Core Model
 
 ### `State` — semantic queries
-*Framework-agnostic · [`@ayde/test/primitives`](src/primitives/README.md)*
+*Framework-agnostic · [`@qaide/test/primitives`](src/primitives/README.md)*
 
 `State` defines how to read a fact about the system. It's a named async function — call it directly, wait on it, or assert it.
 
@@ -109,10 +109,10 @@ await todoPage.itemCount.waitFor(3);            // wait
 await expect(todoPage).toHaveState({ itemCount: 3 }); // assert 🎭
 ```
 
-`State` and `waitFor` are part of [`@ayde/test/primitives`](src/primitives/README.md) and work without Playwright. `toHaveState` 🎭 is Playwright-specific.
+`State` and `waitFor` are part of [`@qaide/test/primitives`](src/primitives/README.md) and work without Playwright. `toHaveState` 🎭 is Playwright-specific.
 
 ### `@Action` — step reporting 🎭
-*Playwright only · [`@ayde/test/playwright`](src/playwright/README.md)*
+*Playwright only · [`@qaide/test/playwright`](src/playwright/README.md)*
 
 `@Action` wraps async POM methods in `test.step(...)`. Step names include the class name, method name, and argument values — visible in Playwright's HTML report and trace viewer.
 
@@ -125,7 +125,7 @@ async addTodo(text: string) { ... }
 Use `@Action('custom name')` to override the auto-generated name.
 
 ### `toHaveState` — polling assertions 🎭
-*Playwright only · [`@ayde/test/playwright`](src/playwright/README.md)*
+*Playwright only · [`@qaide/test/playwright`](src/playwright/README.md)*
 
 `toHaveState` polls state functions until all expectations pass simultaneously. Supports exact values, predicates, and a `stableFor` option for flickery transitions.
 
@@ -139,7 +139,7 @@ await expect(todoPage).toHaveState({
 }, { timeout: 10000, stableFor: 200 });
 
 // On a plain object — using States() to bulk-create named state functions
-import { States } from '@ayde/test/primitives';
+import { States } from '@qaide/test/primitives';
 
 const counters = States({
   total: async () => getTotalCount(),
@@ -149,7 +149,7 @@ await expect(counters).toHaveState({ total: 5, active: 3 });
 ```
 
 ### `Collection` — typed item sets
-*Framework-agnostic · [`@ayde/test/primitives`](src/primitives/README.md) · with POM shorthand in [`@ayde/test/playwright`](src/playwright/README.md)*
+*Framework-agnostic · [`@qaide/test/primitives`](src/primitives/README.md) · with POM shorthand in [`@qaide/test/playwright`](src/playwright/README.md)*
 
 `Collection` wraps a set of component instances with state-based filtering and lookup.
 
@@ -170,13 +170,13 @@ const completed = await items.filter({ isCompleted: true }).all();
 const found = await items.find({ getText: 'Ship docs' });
 ```
 
-Outside POM classes, use `Collection.create(...)` from `@ayde/test/primitives` directly.
+Outside POM classes, use `Collection.create(...)` from `@qaide/test/primitives` directly.
 
 ---
 
 ## Other Packages
 
-### `@ayde/test/primitives` — framework-agnostic core
+### `@qaide/test/primitives` — framework-agnostic core
 
 `State`, `States`, `Collection`, and `waitFor` without any Playwright dependency. Use this when:
 
@@ -186,7 +186,7 @@ Outside POM classes, use `Collection.create(...)` from `@ayde/test/primitives` d
 
 → [`src/primitives/README.md`](src/primitives/README.md)
 
-### `@ayde/test/pom-universal` — POM adapter layer
+### `@qaide/test/pom-universal` — POM adapter layer
 
 The `PageFragment` base class and `createPomAdapter` factory that the Playwright package is built on. Use this when:
 

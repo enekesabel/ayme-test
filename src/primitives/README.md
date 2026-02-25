@@ -1,4 +1,4 @@
-# @ayde/test/primitives
+# @qaide/test/primitives
 
 Framework-agnostic primitives for state-driven testing.
 
@@ -6,7 +6,7 @@ Framework-agnostic primitives for state-driven testing.
 
 Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-`@ayde/test/primitives` offers an alternative: define *what should be true* as named semantic queries (`State`), then assert those queries directly. The implementation detail (how to observe the value) is isolated in the state definition — not scattered across every test.
+`@qaide/test/primitives` offers an alternative: define *what should be true* as named semantic queries (`State`), then assert those queries directly. The implementation detail (how to observe the value) is isolated in the state definition — not scattered across every test.
 
 The mental model:
 
@@ -16,7 +16,7 @@ The mental model:
 
 **When to use primitives directly**
 
-Use `@ayde/test/primitives` when you want the state-driven assertion model without a POM framework. Typical cases:
+Use `@qaide/test/primitives` when you want the state-driven assertion model without a POM framework. Typical cases:
 
 - building custom test harnesses
 - incremental adoption in existing test suites alongside other tools
@@ -72,7 +72,7 @@ state.named(name: string): StateFunction<R>
 **Example**
 
 ```typescript
-import { State } from '@ayde/test/primitives';
+import { State } from '@qaide/test/primitives';
 
 const itemCount = State(async () =>
   document.querySelectorAll('.todo-list li').length
@@ -107,7 +107,7 @@ function States<T extends Record<string, () => Promise<unknown>>>(
 **Example**
 
 ```typescript
-import { States } from '@ayde/test/primitives';
+import { States } from '@qaide/test/primitives';
 
 const { isReady, itemCount } = States({
   isReady: async () => document.querySelector('.loading') === null,   // auto-named 'isReady'
@@ -145,7 +145,7 @@ waitFor(expectations: [StateFunction<unknown>, unknown][], options?: WaitForOpti
 **Example**
 
 ```typescript
-import { State, waitFor } from '@ayde/test/primitives';
+import { State, waitFor } from '@qaide/test/primitives';
 
 const itemCount = State(async () => document.querySelectorAll('.todo-list li').length);
 const isReady = State(async () => document.querySelector('.loading') === null);
@@ -194,7 +194,7 @@ Collection.create<T>(resolver: () => Promise<T[]>): Collection<T>
 **Example**
 
 ```typescript
-import { State, Collection } from '@ayde/test/primitives';
+import { State, Collection } from '@qaide/test/primitives';
 
 const items = Collection.create(async () =>
   Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
@@ -249,7 +249,7 @@ StateTimeoutError: State expectations not met within 5000ms:
 **Catch block example**
 
 ```typescript
-import { StateTimeoutError } from '@ayde/test/primitives';
+import { StateTimeoutError } from '@qaide/test/primitives';
 
 try {
   await waitFor(itemCount, 3);

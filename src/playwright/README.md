@@ -1,10 +1,10 @@
-# @ayde/test/playwright 🎭
+# @qaide/test/playwright 🎭
 
 Playwright-compatible entrypoint with state-driven testing extensions.
 
 ## What This Module Is
 
-`@ayde/test/playwright` is a drop-in replacement for `@playwright/test` imports. It re-exports all of Playwright's API and overrides `test` and `expect` with extended versions that add `toHaveState` and typed POM support.
+`@qaide/test/playwright` is a drop-in replacement for `@playwright/test` imports. It re-exports all of Playwright's API and overrides `test` and `expect` with extended versions that add `toHaveState` and typed POM support.
 
 It also exports typed POM classes (`PageObject`, `PageComponent`) and the `@Action` decorator for step reporting.
 
@@ -65,7 +65,7 @@ Step names always follow: `{actionName}(param1: value1, param2: value2)`.
 **Example**
 
 ```typescript
-import { Action, PageObject } from '@ayde/test/playwright';
+import { Action, PageObject } from '@qaide/test/playwright';
 
 class TodoPage extends PageObject {
   @Action                            // step: 'TodoPage.goto()'
@@ -178,14 +178,14 @@ Playwright-specific base class shared by both `PageObject` and `PageComponent`. 
 | `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
 | `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. |
 | `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
-| `this.waitFor(...)` | Same as `waitFor(...)` from `@ayde/test/primitives`. |
+| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
 
 ---
 
 ## End-To-End Example
 
 ```typescript
-import { test, expect, Action, PageObject, PageComponent } from '@ayde/test/playwright';
+import { test, expect, Action, PageObject, PageComponent } from '@qaide/test/playwright';
 
 class TodoItem extends PageComponent {
   protected readonly checkbox = this.root.locator('.toggle');
