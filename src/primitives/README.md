@@ -1,279 +1,274 @@
 # @ayde/test/primitives
 
-Framework-agnostic testing primitives for state-driven automation.
+Framework-agnostic primitives for state-driven testing.
 
-## When To Use Primitives Directly
+## Why Use This
 
-Use `@ayde/test/primitives` when you want the state/action/effect model without depending on our POM framework.
+Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-Typical cases:
+`@ayde/test/primitives` offers an alternative: define *what should be true* as named semantic queries (`State`), then assert those queries directly. The implementation detail (how to observe the value) is isolated in the state definition — not scattered across every test.
+
+The mental model:
+
+- `State` — a named live query: `() => Promise<T>`. Encapsulates how to read a fact about the system.
+- `waitFor` — a polling assertion engine. Waits until one or more states match expectations.
+- `Collection` — typed item sets with state-based filtering and lookup.
+
+**When to use primitives directly**
+
+Use `@ayde/test/primitives` when you want the state-driven assertion model without a POM framework. Typical cases:
 
 - building custom test harnesses
-- incremental adoption of state-driven assertions in existing tests
+- incremental adoption in existing test suites alongside other tools
+- using a driver or framework not covered by the Playwright adapter
 
-## Mental Model
+## Exports
 
-- `State`: a named live query (`() => Promise<T>`) for semantic truth
-- `Action`: behavior that may declare expected postconditions
-- `Effect`: action completion contract, with optional invariant checks
-- `waitFor`: polling assertion engine used by states, actions, and explicit checks
+**Values**
 
-The goal is to assert what should be true, not how to probe it with low-level selectors.
+- `State(fn)`
+- `States({...})`
+- `Collection<T>`
+- `waitFor(...)`
+- `StateTimeoutError`
 
-## Quick Start
+**Types**
+
+- `StateFunction<R>`
+- `WaitForOptions`
+- `WaitForStateOptions`
+- `StateMismatch`
+- `FilterExpectations<T>`
+
+---
+
+## `State`
+
+Create a semantic async state query.
 
 ```typescript
-import { State, Action, Effect, waitFor } from '@ayde/test/primitives';
-
-const itemCount = State(async () => getItems().length).named('itemCount');
-
-const addItem = Action(
-  async (text: string) => {
-    await createItem(text);
-  },
-  Effect(itemCount, (cur, prev) => cur === prev + 1)
-);
-
-await addItem('Buy milk');
-await waitFor(itemCount, 1);
+function State<R>(fn: () => Promise<R>): StateFunction<R>
 ```
 
-## Core APIs
+**Parameters**
 
-### `State` and `States`
+| | |
+|---|---|
+| `fn` | Async getter called on each poll. May be sync — the return value is wrapped in a Promise. |
+
+**Returns** `StateFunction<R>` — a callable with `.waitFor()` and `.named()`:
 
 ```typescript
-import { State, States } from '@ayde/test/primitives';
+// Call to read the current value
+state(): Promise<R>
 
-const isReady = State(async () => app.ready).named('isReady');
-await isReady.waitFor(true, { timeout: 5000 });
+// Wait until state matches expectation
+state.waitFor(expected: R | ((value: R) => boolean), options?: WaitForOptions): Promise<void>
 
-const { count, isEmpty } = States({
-  count: async () => items.length,
-  isEmpty: async () => items.length === 0,
+// Set a display name used in timeout error messages (chainable)
+state.named(name: string): StateFunction<R>
+```
+
+**Example**
+
+```typescript
+import { State } from '@ayde/test/primitives';
+
+const itemCount = State(async () =>
+  document.querySelectorAll('.todo-list li').length
+).named('itemCount'); // name appears in timeout error messages
+
+await itemCount();                                         // read current value
+await itemCount.waitFor(1);                                // wait until count equals 1
+await itemCount.waitFor(n => n > 0);                      // wait until count > 0
+await itemCount.waitFor(1, { stableFor: 200 });            // wait until stable for 200ms
+```
+
+---
+
+## `States`
+
+Bulk-create named states from an object. Keys become state names automatically.
+
+```typescript
+function States<T extends Record<string, () => Promise<unknown>>>(
+  definitions: T
+): { [K in keyof T]: StateFunction<ReturnType<T[K]>> }
+```
+
+**Parameters**
+
+| | |
+|---|---|
+| `definitions` | Object mapping state names to async getters. Each key becomes the state's `.named(...)` value. |
+
+**Returns** Object with the same keys; each value is a named `StateFunction`.
+
+**Example**
+
+```typescript
+import { States } from '@ayde/test/primitives';
+
+const { isReady, itemCount } = States({
+  isReady: async () => document.querySelector('.loading') === null,   // auto-named 'isReady'
+  itemCount: async () => document.querySelectorAll('.todo-list li').length, // auto-named 'itemCount'
 });
 ```
 
-### `Action` and `Actions`
+---
+
+## `waitFor`
+
+Poll state expectations until they pass. Four overloads:
 
 ```typescript
-import { State, Action, Actions, Effect } from '@ayde/test/primitives';
+// Sleep for a fixed duration
+waitFor(ms: number): Promise<void>
 
-const count = State(async () => items.length);
+// Single state with an expected value or predicate
+waitFor<T>(state: StateFunction<T>, expected: T | ((v: T) => boolean), options?: WaitForOptions): Promise<void>
 
-const add = Action(
-  async (text: string) => {
-    await createItem(text);
-  },
-  Effect(count, (cur, prev) => cur === prev + 1)
-);
+// Single [state, expectation] tuple
+waitFor<T>(expectation: [StateFunction<T>, T | ((v: T) => boolean)], options?: WaitForOptions): Promise<void>
 
-const actions = Actions({
-  clear: async () => {
-    await clearItems();
-  },
-  addWithEffect: [
-    async (text: string) => {
-      await createItem(text);
-    },
-    Effect(count, (cur, prev) => cur === prev + 1),
-  ],
-});
+// Multiple [state, expectation] tuples — all evaluated together
+waitFor(expectations: [StateFunction<unknown>, unknown][], options?: WaitForOptions): Promise<void>
 ```
 
-### `Effect`
+**`WaitForOptions`**
 
-Single-state effect:
+| | |
+|---|---|
+| `timeout?` | Maximum wait time in ms. Default: `5000`. |
+| `stableFor?` | All expectations must hold continuously for this many ms before resolving. Default: `0`. |
 
-```typescript
-Effect(count, 0);
-Effect(count, cur => cur > 0);
-Effect(count, (cur, prev) => cur === prev + 1);
-```
-
-Multi-state effect with named deps:
-
-```typescript
-const isCompleted = State(async () => todo.completed);
-const completedCount = State(async () => todos.filter(t => t.completed).length);
-
-Effect({ isCompleted, completedCount }, prev => ({
-  isCompleted: true,
-  completedCount: prev.completedCount + 1,
-}));
-```
-
-### `Collection`
-
-```typescript
-import { Collection } from '@ayde/test/primitives';
-
-const items = Collection.create(async () => loadTodoItems());
-
-const completed = items.filter({ isCompleted: true });
-const urgent = items.filter({ getText: (t: string) => t.includes('urgent') });
-
-const first = await items.first();
-const count = await items.count();
-const found = await items.find({ getText: 'Buy milk' });
-```
-
-### `waitFor`
+**Example**
 
 ```typescript
 import { State, waitFor } from '@ayde/test/primitives';
 
-const itemCount = State(async () => items.length);
-const isReady = State(async () => app.ready);
+const itemCount = State(async () => document.querySelectorAll('.todo-list li').length);
+const isReady = State(async () => document.querySelector('.loading') === null);
 
-await waitFor(250); // sleep
-
-await waitFor(itemCount, 3, { timeout: 3000 });
-await waitFor([itemCount, n => n > 0], { timeout: 3000 });
-
+await waitFor(itemCount, 3);                              // exact value match
+await waitFor(itemCount, n => n > 0, { timeout: 5000 }); // predicate with custom timeout
+await waitFor(itemCount, 3, { stableFor: 200 });          // must hold true for 200ms
 await waitFor([
-  [itemCount, 3],
+  [itemCount, (n: number) => n >= 1],                    // [state, expectation]
   [isReady, true],
-], { timeout: 5000, stableFor: 200 });
+], { timeout: 5000, stableFor: 200 });                   // all conditions evaluated together
 ```
 
-## Effect Semantics
-
-Effects are not a replacement for test assertions.
-
-Use effects to define when an action has finished and when follow-up steps can safely continue.
-Use invariant effects deliberately for rules you want enforced in every call site of an action.
-
-Keep scenario-specific checks in tests (`waitFor(...)`, `toHaveState(...)`, or framework-native assertions).
-
-Single-state effects:
-
-- exact value: `Effect(count, 3)`
-- predicate on current value: `Effect(count, cur => cur > 0)`
-- predicate on current and previous value: `Effect(count, (cur, prev) => cur === prev + 1)`
+Also supports sleep:
 
 ```typescript
-Effect(count, 3);
-Effect(count, cur => cur > 0);
-Effect(count, (cur, prev) => cur === prev + 1);
+await waitFor(250);
 ```
 
-Multi-state effects:
+---
 
-- declare dependencies with an object
-- callback receives previous values keyed by dependency name
-- only returned keys are asserted
+## `Collection<T>`
+
+A typed collection with state-based filtering. The resolver is any async function that returns an array of items. Each item exposes state functions — those are what `filter` and `find` match against.
+
+**Factory**
 
 ```typescript
-Effect({ count, label }, prev => ({
-  count: prev.label.length,
-  // label omitted: used for computation, not asserted
-}));
+Collection.create<T>(resolver: () => Promise<T[]>): Collection<T>
 ```
 
-## Error Model
+**Methods**
 
-`waitFor` and state waits throw `StateTimeoutError` on timeout.
+| | |
+|---|---|
+| `.filter(expectations)` | Returns a new filtered collection (chainable). Expectations are matched against item state functions. |
+| `.all()` | Resolves all items after applying filters. Returns `Promise<T[]>`. |
+| `.first()` | First item, or `undefined`. Returns `Promise<T \| undefined>`. |
+| `.last()` | Last item, or `undefined`. Returns `Promise<T \| undefined>`. |
+| `.at(index)` | Item at 0-based index, or `undefined`. Returns `Promise<T \| undefined>`. |
+| `.count()` | Number of items after filters. Returns `Promise<number>`. |
+| `.find(expectations)` | First item matching expectations, or `undefined`. Returns `Promise<T \| undefined>`. |
 
-Actions with effects throw `ActionEffectError` when postconditions are not met.
+**Filter expectations** are an object where keys are state property names on `T` and values are exact values or predicates `(v) => boolean`.
 
-### `StateTimeoutError`
-
-Thrown when one or more state expectations are not satisfied within timeout.
-
-Exposes:
-
-- `name`: `'StateTimeoutError'`
-- `timeout: number`: timeout used for the polling operation
-- `mismatches: StateMismatch[]`: current failing expectations at timeout
-
-`StateMismatch` fields:
-
-- `state`: the original state function
-- `stateName?: string`: optional state name (from `.named(...)` or auto-naming)
-- `expected`: expected value or predicate
-- `actual`: latest observed value
-- `isPredicate: boolean`: whether `expected` is a predicate function
-
-### `ActionEffectError`
-
-Thrown by `Action(...)` when declared effects do not become true after execution.
-
-Exposes:
-
-- `name`: `'ActionEffectError'`
-- `actionName?: string`: action display name (if named/discovered)
-- `args: unknown[]`: action call arguments
-- `cause: StateTimeoutError`: underlying timeout details for failed effects
-
-### Practical Use
-
-- inspect `cause.mismatches` in `ActionEffectError` for root-cause diagnostics
-- branch error handling based on `actionName` for targeted logging
-- log `stateName`, `expected`, and `actual` for actionable failure output
+**Example**
 
 ```typescript
-import { ActionEffectError, StateTimeoutError } from '@ayde/test/primitives';
+import { State, Collection } from '@ayde/test/primitives';
+
+const items = Collection.create(async () =>
+  Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
+    isCompleted: State(async () => el.classList.contains('completed')),
+    getText: State(async () => el.textContent ?? ''),
+  }))
+);
+
+const first = await items.first();                              // first item or undefined
+const completed = await items.filter({ isCompleted: true }).all(); // filter by state value
+const byText = await items.find({ getText: 'Ship docs' });     // first match or undefined
+```
+
+---
+
+## Errors
+
+`waitFor(...)` and `state.waitFor(...)` throw `StateTimeoutError` on timeout.
+
+**`StateTimeoutError`**
+
+| | |
+|---|---|
+| `message` | Human-readable summary of all failing expectations. |
+| `timeout` | The timeout value used for the wait (ms). |
+| `mismatches` | Array of `StateMismatch` — one entry per failing expectation. |
+
+**`StateMismatch`**
+
+| | |
+|---|---|
+| `stateName?` | Display name from `.named(...)` or `States({...})`, if set. |
+| `expected` | The expected value or predicate. |
+| `actual` | The last observed value. |
+| `isPredicate` | `true` when `expected` is a function. |
+
+**Single state failure** — `error.message`:
+
+```
+StateTimeoutError: State expectations not met within 5000ms:
+  - itemCount: expected 3, got 1
+```
+
+**Multiple state failures** — when using the array form, all failing expectations are reported:
+
+```
+StateTimeoutError: State expectations not met within 5000ms:
+  - itemCount: expected 3, got 1
+  - isReady: predicate failed (actual: false)
+```
+
+**Catch block example**
+
+```typescript
+import { StateTimeoutError } from '@ayde/test/primitives';
 
 try {
-  await addItem('x');
+  await waitFor(itemCount, 3);
 } catch (e) {
-  if (e instanceof ActionEffectError) {
-    console.error('Action failed:', e.actionName, e.args);
-    for (const mismatch of e.cause.mismatches) {
-      console.error(
-        mismatch.stateName ?? '<unnamed>',
-        'expected:',
-        mismatch.expected,
-        'actual:',
-        mismatch.actual
-      );
-    }
-  }
   if (e instanceof StateTimeoutError) {
-    console.error('Timed out after', e.timeout, 'ms');
-    console.error(e.mismatches);
+    console.log(e.timeout);       // ms used for this wait
+    for (const m of e.mismatches) {
+      console.log(m.stateName);   // 'itemCount'
+      console.log(m.expected);    // 3
+      console.log(m.actual);      // 1
+      console.log(m.isPredicate); // false (true when expectation was a function)
+    }
   }
 }
 ```
 
-## Patterns That Scale
+---
 
-- Name states and actions for better failure output (`.named(...)`).
-- Keep states semantic (`isEditing`, `itemCount`) rather than selector-shaped.
-- Use effects for completion contracts and deliberate invariants.
-- Keep scenario-specific outcomes in test assertions.
-- Use `stableFor` for flickery UI transitions.
+## See Also
 
-## API Reference
-
-### Values
-
-| Export | Description |
-|---|---|
-| `State(fn)` | Create a state from an async getter |
-| `States(defs)` | Bulk-create named states |
-| `Action(fn, effect?)` | Create an action with optional effect verification |
-| `Action(factory)` | Create an action whose effects depend on arguments |
-| `Actions(defs)` | Bulk-create named actions |
-| `Effect(state, value)` | Single-state effect |
-| `Effect(deps, compute)` | Multi-state effect |
-| `Collection.create(resolver)` | Create a `Collection<T>` |
-| `waitFor(...)` | Sleep/polling wait with overloaded forms |
-| `StateTimeoutError` | Timeout error for state polling |
-| `ActionEffectError` | Action postcondition failure |
-
-### Types
-
-| Export | Description |
-|---|---|
-| `StateFunction<R>` | Branded async state function with `.waitFor()` and `.named()` |
-| `ActionFunction<Args, R>` | Async action function with `.named()` and `.meta()` |
-| `ActionMeta` | `{ name?: string; params: string[] }` |
-| `ActionDefinition<R>` | Factory return type for `Action(factory)` |
-| `EffectResult` | Internal effect descriptor returned by `Effect(...)` |
-| `EffectValue<T>` | `T`, `(current: T) => boolean`, or `(current: T, prev: T) => boolean` |
-| `FilterExpectations<T>` | State expectations for `Collection.filter/find` |
-| `StateMismatch` | Mismatch payload in timeout errors |
-| `WaitForOptions` | `timeout`, `stableFor` |
-| `WaitForStateOptions` | Alias used by `state.waitFor(...)` |
+- 🎭 Playwright-specific step reporting, POM classes, and `toHaveState`: [`src/playwright/README.md`](../playwright/README.md)
+- Universal POM base classes and adapter pattern: [`src/pom-universal/README.md`](../pom-universal/README.md)

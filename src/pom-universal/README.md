@@ -2,44 +2,91 @@
 
 Framework-neutral base classes for building typed Page Object Model adapters.
 
-## Purpose
+## Why Use This
 
-Use this package when you want the `PageFragment` model with a non-Playwright driver and locator system.
+`@ayde/test/pom-universal` defines the POM abstraction without coupling to any specific test driver or locator system. It provides `PageFragment` — a base class that supplies `State`, `Collection`, and `waitFor` factories — and `createPomAdapter`, which generates `PageObject` and `PageComponent` classes for a given driver/locator system.
 
-The preferred adapter pattern is:
+`@ayde/test/playwright` 🎭 is a concrete adapter built on top of this layer. Use `pom-universal` directly when you want the same POM model with a different driver.
 
-1. implement an adapter-specific `PageFragment`
-2. generate matching `PageObject` and `PageComponent` with `createPomAdapter(PageFragment)`
+---
 
-`@ayde/test/playwright` is a concrete adapter built on top of this layer.
+## Exports
 
-## Generic Contract
+**Values**
 
-`PageFragment<Driver, Locator>` is parameterized by:
+- `PageFragment<Driver, Locator>`
+- `createPomAdapter(Fragment)`
 
-- `Driver`: top-level automation handle (for example browser page/session)
-- `Locator`: element reference type in your framework
+**Types**
 
-The universal layer provides protected factories:
+- `ComponentConstructor<Driver, Locator, T>`
+- `FragmentConstructor<Driver, Locator>`
 
-- `this.State(...)`
-- `this.Action(...)`
-- `this.Effect(...)`
-- `this.Collection(...)`
+---
 
-## Core Building Blocks
+## `PageFragment<Driver, Locator>`
 
-- `PageFragment<Driver, Locator>`: abstract base for state/action/effect composition
-- `createPomAdapter(PageFragment)`: creates adapter-specific `PageObject` and `PageComponent` classes
+Abstract base class for all page fragments. Parameterized by the driver and locator types of your framework.
 
-## Adapter Responsibilities
+```typescript
+abstract class PageFragment<Driver, Locator> {
+  constructor(protected readonly driver: Driver)
+}
+```
 
-A concrete adapter typically defines a base fragment class that extends `PageFragment` and implements:
+**Abstract method** — must be implemented by the adapter:
 
-1. `resolveAll(...)`: how to resolve a locator into all component instances.
-2. `executeAction(...)` (optional override): wrap action execution (for example reporting/step hooks).
+```typescript
+protected abstract resolveAll<T>(
+  ComponentClass: ComponentConstructor<Driver, Locator, T>,
+  locator: Locator
+): Promise<T[]>
+```
 
-## Minimal Adapter Sketch
+Resolves a locator into an array of component instances. Called by `this.Collection(ComponentClass, locator)`.
+
+**Protected factories** — available in all subclasses:
+
+| | |
+|---|---|
+| `this.State(fn)` | Creates a `StateFunction<R>`. Auto-discovers its property name (`ClassName.propertyName`) for error messages. |
+| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
+| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and locator. Calls `resolveAll` internally. |
+| `this.waitFor` | Same as `waitFor(...)` from `@ayde/test/primitives`. |
+
+> `this.State(fn)` auto-names states using the property key: a state assigned to `this.itemCount` in class `TodoPage` is automatically named `'TodoPage.itemCount'`.
+
+---
+
+## `createPomAdapter`
+
+Generates adapter-specific `PageObject` and `PageComponent` classes from a concrete fragment base class.
+
+```typescript
+function createPomAdapter<T extends PageFragment<Driver, Locator>>(
+  Fragment: abstract new (driver: Driver) => T
+): {
+  PageObject: abstract new (driver: Driver) => T;
+  PageComponent: abstract new (root: Locator, driver: Driver) => T & { readonly root: Locator };
+}
+```
+
+**Parameters**
+
+| | |
+|---|---|
+| `Fragment` | Your adapter-specific base class that extends `PageFragment` and implements `resolveAll`. |
+
+**Returns**
+
+| | |
+|---|---|
+| `PageObject` | Takes `(driver)`. Use for full-page objects. |
+| `PageComponent` | Takes `(root, driver)`. Exposes `this.root` (the element locator). Use for locator-rooted components. |
+
+---
+
+## Minimal Adapter Example
 
 ```typescript
 import { PageFragment, createPomAdapter } from '@ayde/test/pom-universal';
@@ -52,59 +99,63 @@ abstract class AdapterFragment extends PageFragment<Driver, Locator> {
     Ctor: new (locator: Locator, driver: Driver) => T,
     locator: Locator
   ): Promise<T[]> {
-    const locators = await locator.all();
+    const locators = await locator.all();           // driver-specific
     return locators.map(l => new Ctor(l, this.driver));
-  }
-
-  protected executeAction<R>(
-    action: (...args: unknown[]) => Promise<R>,
-    args: unknown[]
-  ): Promise<R> {
-    // Optional adapter hook (for logging/reporting)
-    return action(...args);
   }
 }
 
 const { PageObject, PageComponent } = createPomAdapter(AdapterFragment);
 
-class MyPageObject extends PageObject {}
+class MyPageObject extends PageObject {
+  private items = this.page.locator('.list li');
+  itemCount = this.State(async () => this.items.count());
+}
 
 class MyComponent extends PageComponent {
-  getText = this.State(() => this.rootLocator.text());
+  getText = this.State(async () => this.root.textContent());
 }
 ```
 
-### Optional Single-Arg Components
+---
 
-If your adapter can derive the driver from a locator, add a static hook:
+## `this.Collection(...)` Overloads
+
+Two forms, both return `Collection<T>` from `@ayde/test/primitives`:
+
+**Component shorthand** — resolves via `resolveAll`:
 
 ```typescript
-abstract class AdapterFragment extends PageFragment<Driver, Locator> {
-  static driverFromLocator(locator: Locator): Driver {
-    return locator.driver();
-  }
-}
+items = this.Collection(MyItemComponent, someLocator);
 ```
 
-Then generated components use constructor `(rootLocator)` instead of `(rootLocator, driver)`.
+**Generic resolver** — any async function returning items with state functions:
 
-This is how the Playwright adapter gets single-arg components.
+```typescript
+import { State } from '@ayde/test/primitives';
+
+items = this.Collection(async () => {
+  const locators = await this.driver.findAll('.todo-list li'); // driver-specific
+  return locators.map(el => ({
+    getText: State(async () => el.text()),               // used by .find({ getText: '...' })
+    isCompleted: State(async () => el.hasClass('completed')), // used by .filter({ isCompleted: true })
+  }));
+});
+```
+
+---
 
 ## API Reference
-
-### Values
 
 | Export | Description |
 |---|---|
 | `PageFragment<Driver, Locator>` | Abstract base class for adapter-specific fragments |
-| `createPomAdapter(PageFragment)` | Generate adapter `PageObject` and `PageComponent` classes |
-| `PageObject<Driver, Locator>` | Base class for full-page objects |
-| `PageComponent<Driver, Locator>` | Base class for locator-rooted components |
+| `createPomAdapter(Fragment)` | Generate adapter `PageObject` and `PageComponent` classes |
+| `ComponentConstructor<Driver, Locator, T>` | Constructor shape: `new (locator: Locator, driver: Driver) => T` |
+| `FragmentConstructor<Driver, Locator>` | Constructor shape: `abstract new (driver: Driver) => PageFragment<Driver, Locator>` |
 
-### Types
+---
 
-| Export | Description |
-|---|---|
-| `ActionFunction<Args, R>` | Promise-returning action function signature |
-| `ActionDefinition<R>` | Action factory return (`{ execute, effects? }`) |
-| `ComponentConstructor<Driver, Locator, T>` | Constructor shape used by `Collection(...)` |
+## See Also
+
+- 🎭 Playwright adapter built on this layer: [`src/playwright/README.md`](../playwright/README.md)
+- Framework-agnostic primitives (`State`, `Collection`, `waitFor`): [`src/primitives/README.md`](../primitives/README.md)
