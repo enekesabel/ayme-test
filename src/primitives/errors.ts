@@ -28,16 +28,3 @@ export class StateTimeoutError extends Error {
     super(`State expectations not met within ${timeout}ms:\n${details}`);
   }
 }
-
-export class ActionEffectError extends Error {
-  override readonly name = 'ActionEffectError';
-
-  constructor(
-    readonly actionName: string | undefined,
-    readonly args: unknown[],
-    override readonly cause: StateTimeoutError,
-  ) {
-    const label = actionName ?? 'unnamed action';
-    super(`Action "${label}" effects not met: ${cause.message}`);
-  }
-}

@@ -1,5 +1,3 @@
 export { PageFragment } from './PageFragment';
-export type { ActionFunction, ComponentConstructor } from './PageFragment';
-export { PageObject } from './PageObject';
-export { PageComponent } from './PageComponent';
+export type { ComponentConstructor, FragmentConstructor } from './PageFragment';
 export { createPomAdapter } from './createPomAdapter';
