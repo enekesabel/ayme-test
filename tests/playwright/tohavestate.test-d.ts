@@ -6,7 +6,8 @@ import { PageComponent, PageObject } from '../../src/playwright/pom';
  * This file validates that:
  * - toHaveState accepts correct state references and value types
  * - toHaveState accepts predicates with correct types
- * - Only toHaveState and existence matchers are exposed for PageFragments
+ * - Only toHaveState and existence matchers are exposed for objects with state functions
+ * - toHaveState works on plain objects with state functions (not just PageFragment subclasses)
  */
 
 // ============ Test Component with Various State Types ============
@@ -84,19 +85,35 @@ async function testPageObjectToHaveState(page: TestPage) {
 
 // ============ Verify Only toHaveState and Existence Matchers Are Exposed ============
 
-import type { PageFragmentMatchers } from '../../src/playwright';
+import type { StateMatchers } from '../../src/playwright';
+import { State } from '../../src/primitives';
 
-// Verify PageFragmentMatchers has the expected keys
-type PageFragmentMatchersKeys = keyof PageFragmentMatchers<TestComponent>;
+// Verify StateMatchers has the expected keys
+type StateMatchersKeys = keyof StateMatchers<TestComponent>;
 type ExpectedKeys = 'toHaveState' | 'toBeDefined' | 'toBeUndefined' | 'toBeTruthy' | 'toBeFalsy' | 'toBeNull' | 'not';
 
 // Type assertion: keys should exactly equal ExpectedKeys
-type _AssertExactKeys = PageFragmentMatchersKeys extends ExpectedKeys
-  ? ExpectedKeys extends PageFragmentMatchersKeys
+type _AssertExactKeys = StateMatchersKeys extends ExpectedKeys
+  ? ExpectedKeys extends StateMatchersKeys
     ? true
     : never
   : never;
 const _keysMatch: _AssertExactKeys = true;
+
+// ============ Plain Object With State Functions ============
+
+const plainStateful = {
+  itemCount: State(async () => 3),
+  isReady: State(async () => true),
+};
+
+async function testPlainObjectToHaveState() {
+  // Plain objects with state functions should get toHaveState
+  await expect(plainStateful).toHaveState({ itemCount: 3 });
+  await expect(plainStateful).toHaveState({ isReady: true });
+  await expect(plainStateful).toHaveState({ itemCount: (n: number) => n > 0 });
+  await expect(plainStateful).not.toHaveState({ itemCount: 0 });
+}
 
 // Verify toHaveState and existence matchers work
 async function testAllowedMatchers(comp: TestComponent, page: TestPage) {
