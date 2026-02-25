@@ -2,7 +2,7 @@ import { test, expect } from '../../src/playwright';
 import { TodoPage } from './TodoPage';
 
 /**
- * Showcase tests demonstrating @ayde/test framework capabilities.
+ * Showcase tests demonstrating @qaide/test framework capabilities.
  * Uses the TodoMVC demo app to illustrate patterns and best practices.
  */
 
@@ -11,7 +11,7 @@ test.describe('Basic Usage', () => {
     const todoPage = new TodoPage(page);
 
     await todoPage.goto();
-    await todoPage.addTodo('Learn @ayde/test');
+    await todoPage.addTodo('Learn @qaide/test');
     await todoPage.addTodo('Build great tests');
 
     // Assert states using toHaveState

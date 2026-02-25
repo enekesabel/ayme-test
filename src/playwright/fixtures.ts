@@ -161,7 +161,7 @@ export interface StateMatchers<T> {
 
 // Note: We intentionally do NOT augment Playwright's global namespace.
 // This ensures users who don't import our expect don't get unexpected toHaveState.
-// Only users who import expect from @ayde/test will have access to toHaveState.
+// Only users who import expect from @qaide/test will have access to toHaveState.
 
 // ============ Exports ============
 

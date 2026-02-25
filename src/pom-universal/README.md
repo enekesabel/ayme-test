@@ -1,12 +1,12 @@
-# @ayde/test/pom-universal
+# @qaide/test/pom-universal
 
 Framework-neutral base classes for building typed Page Object Model adapters.
 
 ## Why Use This
 
-`@ayde/test/pom-universal` defines the POM abstraction without coupling to any specific test driver or locator system. It provides `PageFragment` — a base class that supplies `State`, `Collection`, and `waitFor` factories — and `createPomAdapter`, which generates `PageObject` and `PageComponent` classes for a given driver/locator system.
+`@qaide/test/pom-universal` defines the POM abstraction without coupling to any specific test driver or locator system. It provides `PageFragment` — a base class that supplies `State`, `Collection`, and `waitFor` factories — and `createPomAdapter`, which generates `PageObject` and `PageComponent` classes for a given driver/locator system.
 
-`@ayde/test/playwright` 🎭 is a concrete adapter built on top of this layer. Use `pom-universal` directly when you want the same POM model with a different driver.
+`@qaide/test/playwright` 🎭 is a concrete adapter built on top of this layer. Use `pom-universal` directly when you want the same POM model with a different driver.
 
 ---
 
@@ -52,7 +52,7 @@ Resolves a locator into an array of component instances. Called by `this.Collect
 | `this.State(fn)` | Creates a `StateFunction<R>`. Auto-discovers its property name (`ClassName.propertyName`) for error messages. |
 | `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
 | `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and locator. Calls `resolveAll` internally. |
-| `this.waitFor` | Same as `waitFor(...)` from `@ayde/test/primitives`. |
+| `this.waitFor` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
 
 > `this.State(fn)` auto-names states using the property key: a state assigned to `this.itemCount` in class `TodoPage` is automatically named `'TodoPage.itemCount'`.
 
@@ -89,7 +89,7 @@ function createPomAdapter<T extends PageFragment<Driver, Locator>>(
 ## Minimal Adapter Example
 
 ```typescript
-import { PageFragment, createPomAdapter } from '@ayde/test/pom-universal';
+import { PageFragment, createPomAdapter } from '@qaide/test/pom-universal';
 
 type Driver = MyDriver;
 type Locator = MyLocator;
@@ -120,7 +120,7 @@ class MyComponent extends PageComponent {
 
 ## `this.Collection(...)` Overloads
 
-Two forms, both return `Collection<T>` from `@ayde/test/primitives`:
+Two forms, both return `Collection<T>` from `@qaide/test/primitives`:
 
 **Component shorthand** — resolves via `resolveAll`:
 
@@ -131,7 +131,7 @@ items = this.Collection(MyItemComponent, someLocator);
 **Generic resolver** — any async function returning items with state functions:
 
 ```typescript
-import { State } from '@ayde/test/primitives';
+import { State } from '@qaide/test/primitives';
 
 items = this.Collection(async () => {
   const locators = await this.driver.findAll('.todo-list li'); // driver-specific
