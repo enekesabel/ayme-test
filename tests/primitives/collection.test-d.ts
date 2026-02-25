@@ -1,10 +1,10 @@
-import { State, Collection, type StateFunction, type ActionFunction } from '../../src/primitives';
+import { State, Collection, type StateFunction } from '../../src/primitives';
 
 interface TestItem {
   getText: StateFunction<string>;
   getCount: StateFunction<number>;
   isCompleted: StateFunction<boolean>;
-  toggle: ActionFunction<[], void>;
+  toggle(): Promise<void>;
 }
 
 declare const items: Collection<TestItem>;

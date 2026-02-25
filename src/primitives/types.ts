@@ -1,5 +1,4 @@
 import type { StateFunction } from './state';
-import type { ActionFunction } from './action';
 
 /**
  * Extracts keys of State properties from a type.
@@ -7,7 +6,6 @@ import type { ActionFunction } from './action';
  */
 export type StateKeys<T> = {
   [K in keyof T]: T[K] extends StateFunction<unknown> ? K
-    : T[K] extends ActionFunction<unknown[], unknown> ? never
     : T[K] extends (...args: unknown[]) => unknown ? never
     : never;
 }[keyof T];
