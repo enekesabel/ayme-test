@@ -17,11 +17,13 @@ Implementation details stay in one place. Tests express intent and stay resilien
 ## Install
 
 ```bash
+npm install @ayde/test
+```
+
+If you're using the Playwright adapter ([`@ayde/test/playwright`](src/playwright/README.md)) 🎭, also install `@playwright/test`:
+
+```bash
 npm install @playwright/test @ayde/test
-# or
-pnpm add @playwright/test @ayde/test
-# or
-yarn add @playwright/test @ayde/test
 ```
 
 Run tests with the standard Playwright runner:
