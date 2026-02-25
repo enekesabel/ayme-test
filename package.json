@@ -1,7 +1,7 @@
 {
   "name": "@ayde/test",
   "version": "0.1.0-beta.0",
-  "description": "Ayde testing framework for Playwright - drop-in @playwright/test wrapper with POM utilities",
+  "description": "State-driven, semantic web UI and E2E testing. Playwright adapter included.",
   "type": "module",
   "exports": {
     "./primitives": {
@@ -62,13 +62,16 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "playwright",
-    "page-object-model",
-    "pom",
     "testing",
     "e2e",
     "end-to-end",
+    "state-driven",
+    "semantic-testing",
+    "page-object-model",
+    "pom",
+    "playwright",
     "automation",
+    "web-testing",
     "ayde"
   ],
   "author": "Ayde",
@@ -87,6 +90,11 @@
   "homepage": "https://github.com/enekesabel/ayde-testing#readme",
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.44.1",
