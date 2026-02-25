@@ -1,30 +1,18 @@
 # @ayde/test
 
-State-driven testing for Playwright. `@ayde/test` keeps Playwright's runner and assertions, and adds semantic state queries, action effect verification, and a typed POM layer.
+State-driven, semantic web UI and E2E testing.
 
-## Motivation
+## Why
 
-Most E2E tests become brittle because they assert behavior through implementation details:
-DOM structure, CSS classes, selector shape, or driver-specific mechanics.
+Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-`@ayde/test` aims to make tests express user intent and verify user-observable outcomes.
+`@ayde/test` offers a different model — define *what should be true* as named semantic queries (`State`), then assert those queries directly:
 
-The model is:
+- **`State` + `waitFor`** — framework-agnostic semantic state queries and polling assertions. Define facts about the system (`itemCount`, `isReady`) and wait for them to become true.
+- **Semantic POM** *(optional)* — structure tests with typed page objects and components. Each POM class encapsulates its states (`this.State(...)`) and collections (`this.Collection(...)`), keeping implementation details out of tests.
+- **`@Action` + `toHaveState`** 🎭 *(Playwright only)* — `@Action` wraps methods in `test.step(...)` for readable reports; `toHaveState` provides retrying state assertions on any POM or plain stateful object.
 
-- define semantic `State`s (`isCompleted`, `itemCount`, `isEditing`)
-- execute behavior with `Action`s
-- use `Effect`s to signal action completion (and optionally enforce always-on invariants)
-- assert states (`toHaveState` / `waitFor`) instead of low-level probing in every test
-
-Implementation details still exist, but they are localized in one place (state/component definitions), so test intent stays stable across UI refactors and driver changes.
-
-## Package Map
-
-| Import | Use it for |
-|---|---|
-| `@ayde/test/playwright` | Playwright wrapper: `test`, `expect`, `toHaveState`, and Playwright POM classes |
-| `@ayde/test/primitives` | Framework-agnostic core: `State`, `Action`, `Effect`, `Collection`, `waitFor` |
-| `@ayde/test/pom-universal` | Framework-neutral POM base classes for building adapters |
+Implementation details stay in one place. Tests express intent and stay resilient to UI changes.
 
 ## Install
 
@@ -45,38 +33,43 @@ npx playwright test
 ## Quick Start
 
 ```typescript
-import { test, expect, PageObject, PageComponent } from '@ayde/test/playwright';
+import { test, expect, Action, PageObject, PageComponent } from '@ayde/test/playwright';
 
 class TodoItem extends PageComponent {
-  private checkbox = this.rootLocator.locator('.toggle');
+  private checkbox = this.root.locator('.toggle');
 
-  isCompleted = this.State(() =>
-    this.rootLocator.evaluate(node => node.classList.contains('completed'))
+  // Semantic state query — encapsulates how to read "is this completed"
+  isCompleted = this.State(async () =>
+    (await this.root.getAttribute('class') ?? '').includes('completed')
   );
 
-  toggle = this.Action(
-    () => this.checkbox.click(),
-    this.Effect(this.isCompleted, (cur, prev) => cur === !prev)
-  );
+  // @Action wraps the method in test.step(...) for trace viewer + report output
+  @Action
+  async toggle() {
+    await this.checkbox.click();
+  }
 }
 
 class TodoPage extends PageObject {
   private newTodoInput = this.page.locator('.new-todo');
   private todoItems = this.page.locator('.todo-list li');
+
+  // Collection backed by a component class and a Playwright locator
   items = this.Collection(TodoItem, this.todoItems);
 
-  itemCount = this.State(() => this.items.count());
-  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
+  // State derived from the collection
+  itemCount = this.State(async () => this.items.count());
 
-  goto = this.Action(() => this.page.goto('https://demo.playwright.dev/todomvc/#/'));
+  @Action
+  async goto() {
+    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
+  }
 
-  addTodo = this.Action(
-    async (text: string) => {
-      await this.newTodoInput.fill(text);
-      await this.newTodoInput.press('Enter');
-    },
-    this.Effect(this.itemCount, (cur, prev) => cur === prev + 1)
-  );
+  @Action
+  async addTodo(text: string) {
+    await this.newTodoInput.fill(text);
+    await this.newTodoInput.press('Enter');
+  }
 }
 
 test('adds and completes a todo', async ({ page }) => {
@@ -89,35 +82,118 @@ test('adds and completes a todo', async ({ page }) => {
   await expect(first).toBeDefined();
   await first!.toggle();
 
-  await expect(todoPage).toHaveState({
-    itemCount: 1,
-    completedCount: 1,
-  });
+  // toHaveState polls until all expectations are met simultaneously
+  await expect(todoPage).toHaveState({ itemCount: 1 });
 });
 ```
 
-## How The Pieces Fit
+For the full 🎭 Playwright API reference (all exports, `@Action` step names, `toHaveState` options, POM class details): [`src/playwright/README.md`](src/playwright/README.md)
 
-1. `State` defines a live, semantic query.
-2. `Action` performs behavior.
-3. `Effect` defines when an action is complete and safe for the next step.
-4. `expect(...).toHaveState(...)` asserts state externally with polling.
+## Core Model
 
-Use effects for completion contracts and deliberate invariants. Keep scenario-specific outcomes in test assertions.
+### `State` — semantic queries
+*Framework-agnostic · [`@ayde/test/primitives`](src/primitives/README.md)*
 
-## Which Module Should I Use?
+`State` defines how to read a fact about the system. It's a named async function — call it directly, wait on it, or assert it.
 
-| If you want to... | Use |
-|---|---|
-| Keep Playwright ergonomics and add state-driven assertions | `@ayde/test/playwright` |
-| Use the core model outside Playwright | `@ayde/test/primitives` |
-| Build a custom adapter for another driver/locator system | `@ayde/test/pom-universal` |
+Inside a POM class, `this.State(...)` auto-names states from the property key:
 
-## Documentation Index
+```typescript
+itemCount = this.State(async () => this.todoItems.count());
+// named 'TodoPage.itemCount' — shown in error messages
 
-- Playwright wrapper and POM usage: [`src/playwright/README.md`](src/playwright/README.md)
-- Framework-agnostic primitives: [`src/primitives/README.md`](src/primitives/README.md)
-- Universal POM base classes: [`src/pom-universal/README.md`](src/pom-universal/README.md)
+const n = await todoPage.itemCount();           // read
+await todoPage.itemCount.waitFor(3);            // wait
+await expect(todoPage).toHaveState({ itemCount: 3 }); // assert 🎭
+```
+
+`State` and `waitFor` are part of [`@ayde/test/primitives`](src/primitives/README.md) and work without Playwright. `toHaveState` 🎭 is Playwright-specific.
+
+### `@Action` — step reporting 🎭
+*Playwright only · [`@ayde/test/playwright`](src/playwright/README.md)*
+
+`@Action` wraps async POM methods in `test.step(...)`. Step names include the class name, method name, and argument values — visible in Playwright's HTML report and trace viewer.
+
+```typescript
+@Action
+async addTodo(text: string) { ... }
+// produces step: 'TodoPage.addTodo(text: "Ship docs")'
+```
+
+Use `@Action('custom name')` to override the auto-generated name.
+
+### `toHaveState` — polling assertions 🎭
+*Playwright only · [`@ayde/test/playwright`](src/playwright/README.md)*
+
+`toHaveState` polls state functions until all expectations pass simultaneously. Supports exact values, predicates, and a `stableFor` option for flickery transitions.
+
+It works with any object that has `StateFunction` properties — POM classes or plain objects:
+
+```typescript
+// On a POM class
+await expect(todoPage).toHaveState({
+  itemCount: 3,
+  completedCount: (n: number) => n >= 1,
+}, { timeout: 10000, stableFor: 200 });
+
+// On a plain object — using States() to bulk-create named state functions
+import { States } from '@ayde/test/primitives';
+
+const counters = States({
+  total: async () => getTotalCount(),
+  active: async () => getActiveCount(),
+});
+await expect(counters).toHaveState({ total: 5, active: 3 });
+```
+
+### `Collection` — typed item sets
+*Framework-agnostic · [`@ayde/test/primitives`](src/primitives/README.md) · with POM shorthand in [`@ayde/test/playwright`](src/playwright/README.md)*
+
+`Collection` wraps a set of component instances with state-based filtering and lookup.
+
+Inside a POM class, use `this.Collection(...)` to declare collections as properties:
+
+```typescript
+class TodoPage extends PageObject {
+  // Component shorthand: resolves each locator into a TodoItem instance
+  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
+}
+```
+
+The collection can then be queried:
+
+```typescript
+const first = await items.at(0);
+const completed = await items.filter({ isCompleted: true }).all();
+const found = await items.find({ getText: 'Ship docs' });
+```
+
+Outside POM classes, use `Collection.create(...)` from `@ayde/test/primitives` directly.
+
+---
+
+## Other Packages
+
+### `@ayde/test/primitives` — framework-agnostic core
+
+`State`, `States`, `Collection`, and `waitFor` without any Playwright dependency. Use this when:
+
+- building custom test harnesses with a different driver
+- incrementally adopting state-driven assertions in existing tests
+- using the state model outside of a browser context
+
+→ [`src/primitives/README.md`](src/primitives/README.md)
+
+### `@ayde/test/pom-universal` — POM adapter layer
+
+The `PageFragment` base class and `createPomAdapter` factory that the Playwright package is built on. Use this when:
+
+- building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.)
+- extending the POM model with driver-specific behavior
+
+→ [`src/pom-universal/README.md`](src/pom-universal/README.md)
+
+---
 
 ## Stability
 
