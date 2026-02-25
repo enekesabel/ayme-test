@@ -1,5 +1,4 @@
 import { test as base, expect as playwrightExpect } from '@playwright/test';
-import type { PageFragment } from './pom';
 import type { StateFunction } from '../primitives/state';
 import type { StateKeys } from '../primitives/types';
 import { waitFor } from '../primitives/wait';
@@ -51,8 +50,8 @@ playwrightExpect.extend({
    * Accepts an object of state expectations keyed by state property names.
    */
   async toHaveState(
-    received: PageFragment,
-    expectations: ToHaveStateExpectations<PageFragment>,
+    received: Record<string, unknown>,
+    expectations: Record<string, unknown>,
     options?: ToHaveStateOptions
   ) {
     const entries = Object.entries(expectations ?? {});
@@ -67,7 +66,7 @@ playwrightExpect.extend({
 
     const normalizedExpectations: Array<[StateFunction<unknown>, unknown]> = [];
     for (const [key, expected] of entries) {
-      const state = received[key as keyof PageFragment];
+      const state = received[key];
       if (typeof state !== 'function') {
         throw new Error(`State "${key}" is not a valid state function on ${componentName}`);
       }
@@ -102,12 +101,12 @@ playwrightExpect.extend({
 // ============ Type Declarations ============
 
 /**
- * Restricted matchers for PageFragments.
+ * Matchers exposed for any object that has StateFunction properties.
  * Exposes toHaveState, existence matchers, and not modifier.
  */
-export interface PageFragmentMatchers<T extends PageFragment> {
+export interface StateMatchers<T> {
   /**
-   * Asserts that a PageFragment's states match the expected values.
+   * Asserts that an object's states match the expected values.
    * Polls until all states match or timeout is reached.
    *
    * @param expectations - Object of state expectations keyed by state properties
@@ -136,7 +135,7 @@ export interface PageFragmentMatchers<T extends PageFragment> {
     options?: ToHaveStateOptions
   ): Promise<void>;
 
-  // Existence matchers - useful for optional PageFragments
+  // Existence matchers - useful for optional stateful objects
   /** Asserts that the value is not undefined. */
   toBeDefined(): void;
   /** Asserts that the value is undefined. */
@@ -157,7 +156,7 @@ export interface PageFragmentMatchers<T extends PageFragment> {
    * await expect(item).not.toBeUndefined();
    * ```
    */
-  not: PageFragmentMatchers<T>;
+  not: StateMatchers<T>;
 }
 
 // Note: We intentionally do NOT augment Playwright's global namespace.
@@ -173,17 +172,15 @@ export const test = base;
 
 /**
  * Custom call signature for expect.
- * Overrides Playwright's default to provide restricted matchers for PageFragments.
+ * - Arrays → standard Playwright matchers (e.g. toHaveLength)
+ * - Objects with StateFunction properties → StateMatchers (toHaveState + existence matchers)
+ * - Everything else (primitives, Locator, Page, etc.) → standard Playwright matchers
  */
 interface ExpectCallSignature {
-  /**
-   * When passed a PageFragment, returns only toHaveState and not (type-safe).
-   */
-  <T extends PageFragment>(actual: T): PageFragmentMatchers<T>;
-
-  /**
-   * When passed anything else, returns standard Playwright matchers.
-   */
+  <T extends unknown[]>(actual: T): ReturnType<typeof playwrightExpect<T>>;
+  <T extends object>(actual: T): [StateKeys<T>] extends [never]
+    ? ReturnType<typeof playwrightExpect<T>>
+    : StateMatchers<T>;
   <T>(actual: T): ReturnType<typeof playwrightExpect<T>>;
 }
 

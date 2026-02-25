@@ -5,8 +5,10 @@ import type { StateFunction } from './state';
  * Excludes actions, methods, and other non-state properties.
  */
 export type StateKeys<T> = {
-  [K in keyof T]: T[K] extends StateFunction<unknown> ? K
-    : T[K] extends (...args: unknown[]) => unknown ? never
+  [K in keyof T]: K extends string
+    ? T[K] extends StateFunction<unknown> ? K
+      : T[K] extends (...args: unknown[]) => unknown ? never
+      : never
     : never;
 }[keyof T];
 
