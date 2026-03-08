@@ -2,6 +2,18 @@
 export { State, States } from './state';
 export type { StateFunction } from './state';
 
+// Action
+export { Action } from './action';
+export type {
+  ActionEffectBuilder,
+  ActionFunction,
+  ActionMeta,
+  EffectValue,
+  GroupEffectPredicate,
+  ResolvedDeps,
+  StateDeps,
+} from './action';
+
 // Wait
 export { waitFor } from './wait';
 export type { WaitForOptions, WaitForStateOptions } from './wait';
@@ -10,7 +22,7 @@ export type { WaitForOptions, WaitForStateOptions } from './wait';
 export { Collection } from './collection';
 
 // Errors
-export { StateTimeoutError } from './errors';
+export { ActionEffectError, StateTimeoutError } from './errors';
 export type { StateMismatch } from './errors';
 
 // Types

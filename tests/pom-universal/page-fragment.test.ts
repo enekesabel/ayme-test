@@ -11,15 +11,15 @@ class TestFragment extends PageFragment {
 
   private counter = 0;
 
-  async increment() {
+  increment = this.Action(async () => {
     this.counter += 1;
     return this.counter;
-  }
+  }).effect(this.count, (current, previous) => current === previous + 1);
 
-  async setCount(value: number) {
+  setCount = this.Action(async (value: number) => {
     this.counter = value;
     return this.counter;
-  }
+  }).effect((effect, value) => effect(this.count, value));
 
   async waitUntilCount(value: number) {
     await this.waitFor(this.count, value, { timeout: 1000 });
@@ -60,7 +60,7 @@ test.describe('PageFragment methods', () => {
   test('exposes waitFor() utility in fragment methods', async () => {
     const fragment = new TestFragment(undefined);
     setTimeout(() => {
-      fragment.setCount(5);
+      void fragment.setCount(5);
     }, 50);
     await expect(fragment.waitUntilCount(5)).resolves.toBeUndefined();
   });

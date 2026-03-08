@@ -1,9 +1,16 @@
 import type { StateFunction } from '../primitives/state';
 import { brandState } from '../primitives/state';
+import { Action as primitiveAction } from '../primitives/action';
+import type {
+  ActionFunction as PrimitiveActionFunction,
+  ActionMeta,
+} from '../primitives/action';
 import { Collection } from '../primitives/collection';
 import { waitFor as primitiveWaitFor } from '../primitives/wait';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+export type ActionFunction<Args extends unknown[], R> = PrimitiveActionFunction<Args, R>;
 
 /**
  * Framework-independent base class for all page fragments.
@@ -39,6 +46,48 @@ export abstract class PageFragment<L = unknown> {
 
   protected waitFor = primitiveWaitFor;
 
+  /**
+   * Hook for framework adapters to wrap action execution (e.g. test.step()).
+   * Override in adapters — default implementation just calls the action directly.
+   */
+  protected executeAction<Args extends unknown[], R>(
+    action: PrimitiveActionFunction<Args, R>,
+    args: Args,
+  ): Promise<R> {
+    return action(...args);
+  }
+
+  protected Action<Args extends unknown[], R>(
+    fn: (...args: Args) => Promise<R>,
+  ): ActionFunction<Args, R> {
+    const action = primitiveAction((...args: Args) => fn.apply(this, args));
+
+    const wrapper = ((...args: Args): Promise<R> => {
+      this.ensureActionNamed(action, wrapper);
+      return this.executeAction(action, args);
+    }) as ActionFunction<Args, R>;
+
+    wrapper.effect = ((
+      first: unknown,
+      second?: unknown,
+    ): ActionFunction<Args, R> => {
+      (action.effect as (first: unknown, second?: unknown) => PrimitiveActionFunction<Args, R>)(first, second);
+      return wrapper;
+    }) as ActionFunction<Args, R>['effect'];
+
+    wrapper.named = (name: string): ActionFunction<Args, R> => {
+      action.named(name);
+      return wrapper;
+    };
+
+    wrapper.meta = (): ActionMeta => {
+      this.ensureActionNamed(action, wrapper);
+      return action.meta();
+    };
+
+    return wrapper;
+  }
+
   protected State<R>(fn: () => Promise<R>): StateFunction<R> {
     let nameDiscovered = false;
     const state = brandState<R>(async () => {
@@ -71,6 +120,21 @@ export abstract class PageFragment<L = unknown> {
   }
 
   protected abstract clone(): this;
+
+  private ensureActionNamed<Args extends unknown[], R>(
+    action: PrimitiveActionFunction<Args, R>,
+    wrapper: ActionFunction<Args, R>,
+  ): void {
+    if (action.meta().name !== undefined) return;
+
+    const className = this.constructor.name;
+    for (const key of Object.keys(this)) {
+      if ((this as Record<string, unknown>)[key] === wrapper) {
+        action.named(`${className}.${key}`);
+        break;
+      }
+    }
+  }
 }
 
 // ─── Adapter factory ──────────────────────────────────────────────
