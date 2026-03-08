@@ -16,6 +16,8 @@ async function testValidFilters() {
   items.filter({ isCompleted: false });
   items.filter({ getText: 'hello' });
   items.filter({ getCount: 42 });
+  items.filter(() => true);
+  items.filter(async item => await item.isCompleted());
 
   // Predicate functions
   items.filter({ isCompleted: (val: boolean) => val === true });
@@ -40,9 +42,23 @@ async function testValidFinds() {
   const item1 = await items.find({ getText: 'hello' });
   const item2 = await items.find({ isCompleted: true });
   const item3 = await items.find({ getText: (t: string) => t.length > 5 });
+  const item4 = await items.find(async item => (await item.getCount()) > 10);
 
   // Return type should be TestItem | undefined
   const foundItem: TestItem | undefined = item1;
+  const foundByPredicate: TestItem | undefined = item4;
+}
+
+async function testAsyncIteration() {
+  for await (const item of items) {
+    const iteratedItem: TestItem = item;
+    void iteratedItem;
+  }
+
+  for await (const item of items.filter({ isCompleted: true })) {
+    const text: string = await item.getText();
+    void text;
+  }
 }
 
 // ============ Invalid calls ============
@@ -62,6 +78,9 @@ async function testInvalidFilters() {
 
   // @ts-expect-error - trying to filter by action (not state)
   items.filter({ toggle: true });
+
+  // @ts-expect-error - predicate must return boolean
+  items.filter(item => item.getText());
 }
 
 async function testInvalidFinds() {
@@ -73,6 +92,9 @@ async function testInvalidFinds() {
 
   // @ts-expect-error - unknown state key
   await items.find({ unknownState: 'value' });
+
+  // @ts-expect-error - predicate must return boolean
+  await items.find(async item => await item.getText());
 }
 
 export {};

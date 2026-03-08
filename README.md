@@ -170,6 +170,36 @@ const completed = await items.filter({ isCompleted: true }).all();
 const found = await items.find({ getText: 'Ship docs' });
 ```
 
+For advanced cases, `filter(...)` and `find(...)` also accept an item predicate:
+
+```typescript
+const urgentOrCompleted = await items
+  .filter(async item =>
+    (await item.isCompleted()) || (await item.getText()).includes('urgent')
+  )
+  .all();
+
+const inconsistentRow = await rows.find(async row =>
+  (await row.getDoneCount()) > (await row.getTotalCount())
+);
+```
+
+Use state expectations when possible; predicates are the escape hatch for `OR` conditions, cross-state relations, or other custom item logic.
+
+It also supports async iteration:
+
+```typescript
+for await (const item of items) {
+  console.log(await item.getText());
+}
+
+for await (const item of items.filter({ isCompleted: true })) {
+  console.log(await item.getText());
+}
+```
+
+Each `for await...of` run resolves a fresh snapshot of the current matching items. It is not a live stream, and it does not cache across separate iteration runs.
+
 Outside POM classes, use `Collection.create(...)` from `@qaide/test/primitives` directly.
 
 ---

@@ -29,6 +29,16 @@ test.describe('Collection', () => {
     expect(all.length).toBe(4);
   });
 
+  test('supports async iteration over all items in order', async () => {
+    const texts: string[] = [];
+
+    for await (const item of collection) {
+      texts.push(await item.getText());
+    }
+
+    expect(texts).toEqual(['Buy milk', 'Write tests', 'Deploy app', 'Review PR']);
+  });
+
   test('.count() returns item count', async () => {
     expect(await collection.count()).toBe(4);
   });
@@ -64,12 +74,32 @@ test.describe('Collection', () => {
     expect(texts).toEqual(['Write tests', 'Review PR']);
   });
 
+  test('supports async iteration over filtered items in order', async () => {
+    const texts: string[] = [];
+
+    for await (const item of collection.filter({ isCompleted: true })) {
+      texts.push(await item.getText());
+    }
+
+    expect(texts).toEqual(['Write tests', 'Review PR']);
+  });
+
   test('.filter() by predicate', async () => {
     const longNames = collection.filter({
       getText: ((t: string) => t.length > 8) as (v: unknown) => boolean,
     });
     const all = await longNames.all();
     expect(all.length).toBe(3);
+  });
+
+  test('.filter() by item predicate', async () => {
+    const longCompleted = collection.filter(async (item) =>
+      (await item.isCompleted()) && (await item.getText()).length > 9
+    );
+    const all = await longCompleted.all();
+
+    expect(all).toHaveLength(1);
+    expect(await all[0]!.getText()).toBe('Write tests');
   });
 
   test('.filter() chaining', async () => {
@@ -89,6 +119,14 @@ test.describe('Collection', () => {
     expect(await found!.isCompleted()).toBe(false);
   });
 
+  test('.find() by item predicate', async () => {
+    const found = await collection.find(async (item) =>
+      (await item.isCompleted()) && (await item.getText()).includes('Review')
+    );
+    expect(found).toBeTruthy();
+    expect(await found!.getText()).toBe('Review PR');
+  });
+
   test('.find() returns undefined when no match', async () => {
     const found = await collection.find({ getText: 'nonexistent' });
     expect(found).toBeUndefined();
@@ -101,5 +139,25 @@ test.describe('Collection', () => {
     });
     expect(found).toBeTruthy();
     expect(await found!.getText()).toBe('Review PR');
+  });
+
+  test('async iteration re-resolves for each run', async () => {
+    let currentItems = [createItem('First item', false)];
+    const resolvingCollection = Collection.create<Item>(async () => currentItems);
+
+    const firstRun: string[] = [];
+    for await (const item of resolvingCollection) {
+      firstRun.push(await item.getText());
+    }
+
+    currentItems = [createItem('Second item', true)];
+
+    const secondRun: string[] = [];
+    for await (const item of resolvingCollection) {
+      secondRun.push(await item.getText());
+    }
+
+    expect(firstRun).toEqual(['First item']);
+    expect(secondRun).toEqual(['Second item']);
   });
 });

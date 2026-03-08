@@ -169,7 +169,7 @@ await waitFor(250);
 
 ## `Collection<T>`
 
-A typed collection with state-based filtering. The resolver is any async function that returns an array of items. Each item exposes state functions — those are what `filter` and `find` match against.
+A typed collection with state-based filtering. The resolver is any async function that returns an array of items. Each item exposes state functions — those are what `filter` and `find` primarily match against, with optional item predicates for advanced cases.
 
 **Factory**
 
@@ -181,15 +181,18 @@ Collection.create<T>(resolver: () => Promise<T[]>): Collection<T>
 
 | | |
 |---|---|
-| `.filter(expectations)` | Returns a new filtered collection (chainable). Expectations are matched against item state functions. |
+| `.filter(expectations \| predicate)` | Returns a new filtered collection (chainable). Prefer state expectations; item predicates are the escape hatch for custom logic. |
 | `.all()` | Resolves all items after applying filters. Returns `Promise<T[]>`. |
+| `for await...of` | Iterates over one resolved snapshot of the current matching items. Each iteration run resolves fresh items. |
 | `.first()` | First item, or `undefined`. Returns `Promise<T \| undefined>`. |
 | `.last()` | Last item, or `undefined`. Returns `Promise<T \| undefined>`. |
 | `.at(index)` | Item at 0-based index, or `undefined`. Returns `Promise<T \| undefined>`. |
 | `.count()` | Number of items after filters. Returns `Promise<number>`. |
-| `.find(expectations)` | First item matching expectations, or `undefined`. Returns `Promise<T \| undefined>`. |
+| `.find(expectations \| predicate)` | First item matching expectations or a predicate, or `undefined`. Returns `Promise<T \| undefined>`. |
 
 **Filter expectations** are an object where keys are state property names on `T` and values are exact values or predicates `(v) => boolean`.
+
+**Item predicates** receive the item instance and return `boolean | Promise<boolean>`. Use them when the query needs `OR` conditions, cross-state relations, or other custom logic.
 
 **Example**
 
@@ -206,7 +209,23 @@ const items = Collection.create(async () =>
 const first = await items.first();                              // first item or undefined
 const completed = await items.filter({ isCompleted: true }).all(); // filter by state value
 const byText = await items.find({ getText: 'Ship docs' });     // first match or undefined
+const urgentOrCompleted = await items
+  .filter(async item => (await item.isCompleted()) || (await item.getText()).includes('urgent'))
+  .all();
+const inconsistentRow = await rows.find(async row =>
+  (await row.getDoneCount()) > (await row.getTotalCount())
+);
+
+for await (const item of items) {
+  console.log(await item.getText());
+}
+
+for await (const item of items.filter({ isCompleted: true })) {
+  console.log(await item.getText());
+}
 ```
+
+Each `for await...of` run resolves one snapshot of the current matching items. Iteration is not a live stream and does not cache across separate runs.
 
 ---
 
