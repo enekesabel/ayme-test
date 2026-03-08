@@ -1,6 +1,7 @@
 import type { FilterExpectations } from './types';
 
 type FilterPredicate<T> = (item: T) => Promise<boolean>;
+type CollectionPredicate<T> = (item: T) => boolean | Promise<boolean>;
 
 /**
  * A framework-independent typed collection with state-based filtering.
@@ -8,7 +9,7 @@ type FilterPredicate<T> = (item: T) => Promise<boolean>;
  *
  * Subclassable: `filter()` preserves the concrete type via virtual constructor.
  */
-export class Collection<T> {
+export class Collection<T> implements AsyncIterable<T> {
   static create<T>(resolver: () => Promise<T[]>): Collection<T> {
     return new Collection(resolver);
   }
@@ -22,21 +23,10 @@ export class Collection<T> {
    * Filter the collection by state expectations.
    * Returns a new collection of the same concrete type (chainable).
    */
-  filter(expectations: FilterExpectations<T>): this {
-    const predicate: FilterPredicate<T> = async (item) => {
-      for (const [key, expected] of Object.entries(expectations)) {
-        const getter = (item as any)[key];
-        if (typeof getter === 'function') {
-          const actual = await getter.call(item);
-          if (typeof expected === 'function') {
-            if (!(expected as (v: unknown) => boolean)(actual)) return false;
-          } else {
-            if (actual !== expected) return false;
-          }
-        }
-      }
-      return true;
-    };
+  filter(expectations: FilterExpectations<T>): this;
+  filter(predicate: CollectionPredicate<T>): this;
+  filter(criteria: FilterExpectations<T> | CollectionPredicate<T>): this {
+    const predicate = this.toFilterPredicate(criteria);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)(
@@ -61,6 +51,13 @@ export class Collection<T> {
     return filtered;
   }
 
+  /** Iterate items in a single resolved snapshot for this iteration run. */
+  async *[Symbol.asyncIterator](): AsyncIterator<T> {
+    for (const item of await this.all()) {
+      yield item;
+    }
+  }
+
   /** Get the first item. */
   async first(): Promise<T | undefined> {
     return (await this.all())[0];
@@ -82,30 +79,38 @@ export class Collection<T> {
     return (await this.all())[index];
   }
 
-  /** Find the first item matching state expectations. */
-  async find(expectations: FilterExpectations<T>): Promise<T | undefined> {
+  /** Find the first item matching state expectations or a predicate. */
+  find(expectations: FilterExpectations<T>): Promise<T | undefined>;
+  find(predicate: CollectionPredicate<T>): Promise<T | undefined>;
+  async find(criteria: FilterExpectations<T> | CollectionPredicate<T>): Promise<T | undefined> {
     const items = await this.all();
+    const predicate = this.toFilterPredicate(criteria);
     for (const item of items) {
-      let matches = true;
-      for (const [key, expected] of Object.entries(expectations)) {
+      if (await predicate(item)) return item;
+    }
+    return undefined;
+  }
+
+  protected toFilterPredicate(
+    criteria: FilterExpectations<T> | CollectionPredicate<T>,
+  ): FilterPredicate<T> {
+    if (typeof criteria === 'function') {
+      return async (item) => await criteria(item);
+    }
+
+    return async (item) => {
+      for (const [key, expected] of Object.entries(criteria)) {
         const getter = (item as any)[key];
         if (typeof getter === 'function') {
           const actual = await getter.call(item);
           if (typeof expected === 'function') {
-            if (!(expected as (v: unknown) => boolean)(actual)) {
-              matches = false;
-              break;
-            }
+            if (!(expected as (v: unknown) => boolean)(actual)) return false;
           } else {
-            if (actual !== expected) {
-              matches = false;
-              break;
-            }
+            if (actual !== expected) return false;
           }
         }
       }
-      if (matches) return item;
-    }
-    return undefined;
+      return true;
+    };
   }
 }
