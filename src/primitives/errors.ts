@@ -28,3 +28,17 @@ export class StateTimeoutError extends Error {
     super(`State expectations not met within ${timeout}ms:\n${details}`);
   }
 }
+
+export class ActionEffectError extends Error {
+  override readonly name = 'ActionEffectError';
+
+  constructor(
+    readonly actionCall: string,
+    readonly args: unknown[],
+    readonly timeout: number,
+    readonly details: string,
+    override readonly cause?: Error,
+  ) {
+    super(`Action "${actionCall}" effects not met within ${timeout}ms:\n${details}`);
+  }
+}

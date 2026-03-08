@@ -1,7 +1,9 @@
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, test } from '@playwright/test';
 import { PageFragment as GenericPageFragment } from '../../pom-universal/createAdapter';
 import { createAdapter } from '../../pom-universal/createAdapter';
+import type { ActionFunction as PrimitiveActionFunction } from '../../primitives/action';
 import { Collection } from '../../primitives/collection';
+import { formatActionCall } from './format';
 export { Action } from './action';
 
 type ComponentConstructor<T> = new (locator: Locator, page: Page) => T;
@@ -23,9 +25,18 @@ abstract class PlaywrightPageFragment extends GenericPageFragment<Locator> {
     return new Ctor(this.page);
   }
 
+  protected executeAction<Args extends unknown[], R>(
+    action: PrimitiveActionFunction<Args, R>,
+    args: Args,
+  ): Promise<R> {
+    const { name, params } = action.meta();
+    const stepName = formatActionCall(name ?? '<unknown>', params, args);
+    return test.step(stepName, () => action(...args));
+  }
+
   private async resolveAll<T>(
     Cls: ComponentConstructor<T>,
-    locator: Locator
+    locator: Locator,
   ): Promise<T[]> {
     return (await locator.all()).map(l => new Cls(l, this.page));
   }
@@ -34,7 +45,7 @@ abstract class PlaywrightPageFragment extends GenericPageFragment<Locator> {
   protected override Collection<T>(ComponentClass: ComponentConstructor<T>, locator: Locator): Collection<T>;
   protected override Collection<T>(
     first: (() => Promise<T[]>) | ComponentConstructor<T>,
-    locator?: Locator
+    locator?: Locator,
   ): Collection<T> {
     if (locator === undefined) {
       return super.Collection(first as () => Promise<T[]>);

@@ -1,4 +1,4 @@
-import { Action, PageObject, PageComponent } from '../../src/playwright/pom';
+import { PageObject, PageComponent } from '../../src/playwright/pom';
 
 /**
  * A reusable checkbox component.
@@ -6,24 +6,16 @@ import { Action, PageObject, PageComponent } from '../../src/playwright/pom';
 export class Checkbox extends PageComponent {
   isChecked = this.State(() => this.locators.root.isChecked());
 
-  @Action
-  async toggle() {
-    const before = await this.isChecked();
-    await this.locators.root.click();
-    await this.waitFor(this.isChecked, cur => cur === !before);
-  }
+  toggle = this.Action(() => this.root.click())
+    .effect(this.isChecked, (current, previous) => current === !previous);
 
-  @Action
-  async check() {
+  check = this.Action(async () => {
     if (!(await this.isChecked())) await this.toggle();
-    await this.waitFor(this.isChecked, true);
-  }
+  }).effect(this.isChecked, true);
 
-  @Action
-  async uncheck() {
+  uncheck = this.Action(async () => {
     if (await this.isChecked()) await this.toggle();
-    await this.waitFor(this.isChecked, false);
-  }
+  }).effect(this.isChecked, false);
 }
 
 /**
@@ -33,12 +25,10 @@ export class NewTodoInput extends PageComponent {
   getValue = this.State(() => this.locators.root.inputValue());
   isEmpty = this.State(async () => (await this.getValue()) === '');
 
-  @Action
-  async addTodo(text: string) {
-    await this.locators.root.fill(text);
-    await this.locators.root.press('Enter');
-    await this.waitFor(this.isEmpty, true);
-  }
+  addTodo = this.Action(async (text: string) => {
+    await this.root.fill(text);
+    await this.root.press('Enter');
+  }).effect(this.isEmpty, true);
 }
 
 /**
@@ -57,37 +47,28 @@ export class TodoItem extends PageComponent {
   getText = this.State(() => this.locators.label.innerText());
   isCompleted = this.State(() => this.checkbox.isChecked());
 
-  @Action
-  async toggle() {
-    const before = await this.isCompleted();
+  toggle = this.Action(async () => {
     await this.checkbox.toggle();
-    await this.waitFor(this.isCompleted, cur => cur === !before);
-  }
+  }).effect(this.isCompleted, (current, previous) => current === !previous);
 
-  @Action
-  async markAsCompleted() {
+  markAsCompleted = this.Action(async () => {
     await this.checkbox.check();
-    await this.waitFor(this.isCompleted, true);
-  }
+  }).effect(this.isCompleted, true);
 
-  @Action
-  async markAsActive() {
+  markAsActive = this.Action(async () => {
     await this.checkbox.uncheck();
-    await this.waitFor(this.isCompleted, false);
-  }
+  }).effect(this.isCompleted, false);
 
   async delete() {
     await this.locators.root.hover();
     await this.locators.destroyButton.click();
   }
 
-  @Action
-  async edit(newText: string) {
+  edit = this.Action(async (newText: string) => {
     await this.locators.label.dblclick();
     await this.locators.editInput.fill(newText);
     await this.locators.editInput.press('Enter');
-    await this.waitFor(this.getText, newText);
-  }
+  }).effect((effect, newText) => effect(this.getText, newText));
 }
 
 /**
@@ -121,18 +102,13 @@ export class TodoPage extends PageObject {
     return 'all';
   });
 
-  @Action
-  async goto() {
+  goto = this.Action(async () => {
     await this.page.goto('https://demo.playwright.dev/todomvc/#/');
-    await this.waitFor(this.activeFilter, 'all');
-  }
+  }).effect(this.activeFilter, 'all');
 
-  @Action
-  async addTodo(text: string) {
-    const beforeCount = await this.itemCount();
+  addTodo = this.Action(async (text: string) => {
     await this.newTodoInput.addTodo(text);
-    await this.waitFor(this.itemCount, cur => cur === beforeCount + 1);
-  }
+  }).effect(this.itemCount, (current, previous) => current === previous + 1);
 
   async addTodos(texts: string[]) {
     for (const text of texts) {
@@ -144,31 +120,23 @@ export class TodoPage extends PageObject {
     await this.toggleAllCheckbox.toggle();
   }
 
-  @Action
-  async clearCompleted() {
+  clearCompleted = this.Action(async () => {
     await this.locators.clearCompletedButton.click();
-    await this.waitFor(this.completedCount, 0);
-  }
+  }).effect(this.completedCount, 0);
 
-  @Action
-  async filterAll() {
+  filterAll = this.Action(async () => {
     await this.locators.filterAllLink.click();
-    await this.waitFor(this.activeFilter, 'all');
-  }
+  }).effect(this.activeFilter, 'all');
 
-  @Action
-  async filterActive() {
+  filterActive = this.Action(async () => {
     await this.locators.filterActiveLink.click();
     await this.page.waitForURL(/.*#\/active/);
-    await this.waitFor(this.activeFilter, 'active');
-  }
+  }).effect(this.activeFilter, 'active');
 
-  @Action
-  async filterCompleted() {
+  filterCompleted = this.Action(async () => {
     await this.locators.filterCompletedLink.click();
     await this.page.waitForURL(/.*#\/completed/);
-    await this.waitFor(this.activeFilter, 'completed');
-  }
+  }).effect(this.activeFilter, 'completed');
 
   async getTodoAt(index: number): Promise<TodoItem | undefined> {
     return this.items.at(index);
