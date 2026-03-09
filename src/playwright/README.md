@@ -151,9 +151,9 @@ await expect(todoPage).toHaveState(
 Base class for full-page objects. Takes a `Page` as its constructor argument.
 
 ```typescript
-class PageObject extends PageFragment<Page, Locator> {
+class PageObject {
   constructor(page: Page)
-  get page(): Page   // the Playwright Page
+  readonly page: Page
 }
 ```
 
@@ -162,21 +162,21 @@ class PageObject extends PageFragment<Page, Locator> {
 Base class for locator-rooted components. Takes only a `Locator` — `page` is derived automatically from `root.page()`.
 
 ```typescript
-class PageComponent extends PageFragment<Page, Locator> {
+class PageComponent {
   constructor(root: Locator)
-  readonly root: Locator   // the root locator
-  get page(): Page         // derived from root.page()
+  readonly root: Locator
+  readonly page: Page   // derived from root.page()
 }
 ```
 
 ### `PageFragment`
 
-Playwright-specific base class shared by both `PageObject` and `PageComponent`. Inherits all factories from the universal layer:
+Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with Playwright-specific collection resolution.
 
 | | |
 |---|---|
 | `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
-| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. |
+| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
 | `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
 | `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
 

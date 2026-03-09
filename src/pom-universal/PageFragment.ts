@@ -3,43 +3,14 @@ import { brandState } from '../primitives/state';
 import { Collection } from '../primitives/collection';
 import { waitFor as primitiveWaitFor } from '../primitives/wait';
 
-export type FragmentConstructor<Driver, Locator> = abstract new (driver: Driver) => PageFragment<Driver, Locator>;
-
-export type ComponentConstructor<Driver, Locator, T> = new (locator: Locator, driver: Driver) => T;
-
 /**
  * Framework-independent base class for all page fragments.
- * Provides State and Collection factories.
- *
- * @typeParam Driver - The test framework's driver type (e.g. Playwright's `Page`)
- * @typeParam Locator - The test framework's element locator type (e.g. Playwright's `Locator`)
+ * Provides State, Collection, and waitFor factories.
+ * Adapters extend this class and add their own driver/locator concerns.
  */
-export abstract class PageFragment<Driver, Locator> {
-  constructor(protected readonly driver: Driver) {}
-
-  protected abstract resolveAll<T>(
-    ComponentClass: ComponentConstructor<Driver, Locator, T>,
-    locator: Locator
-  ): Promise<T[]>;
-
-  protected Collection<T>(
-    resolver: () => Promise<T[]>,
-  ): Collection<T>;
-  protected Collection<T>(
-    ComponentClass: ComponentConstructor<Driver, Locator, T>,
-    locator: Locator
-  ): Collection<T>;
-  protected Collection<T>(
-    first: (() => Promise<T[]>) | ComponentConstructor<Driver, Locator, T>,
-    locator?: Locator
-  ): Collection<T> {
-    if (locator === undefined) {
-      return Collection.create(first as () => Promise<T[]>);
-    }
-    return Collection.create(() => this.resolveAll(
-      first as ComponentConstructor<Driver, Locator, T>,
-      locator,
-    ));
+export abstract class PageFragment {
+  protected Collection<T>(resolver: () => Promise<T[]>): Collection<T> {
+    return Collection.create(resolver);
   }
 
   protected waitFor = primitiveWaitFor;
