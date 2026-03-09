@@ -3,14 +3,17 @@ import { brandState } from '../primitives/state';
 import { Action as primitiveAction } from '../primitives/action';
 import type {
   ActionFunction as PrimitiveActionFunction,
+  ActionWithEffects as PrimitiveActionWithEffects,
   ActionMeta,
 } from '../primitives/action';
 import { Collection } from '../primitives/collection';
 import { waitFor as primitiveWaitFor } from '../primitives/wait';
+import type { WaitForOptions } from '../primitives/wait';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type ActionFunction<Args extends unknown[], R> = PrimitiveActionFunction<Args, R>;
+export type ActionWithEffects<Args extends unknown[], R> = PrimitiveActionWithEffects<Args, R>;
 
 /**
  * Framework-independent base class for all page fragments.
@@ -70,10 +73,15 @@ export abstract class PageFragment<L = unknown> {
     wrapper.effect = ((
       first: unknown,
       second?: unknown,
-    ): ActionFunction<Args, R> => {
-      (action.effect as (first: unknown, second?: unknown) => PrimitiveActionFunction<Args, R>)(first, second);
-      return wrapper;
+    ): ActionWithEffects<Args, R> => {
+      (action.effect as (first: unknown, second?: unknown) => PrimitiveActionWithEffects<Args, R>)(first, second);
+      return wrapper as unknown as ActionWithEffects<Args, R>;
     }) as ActionFunction<Args, R>['effect'];
+
+    (wrapper as unknown as ActionWithEffects<Args, R>).options = (opts: WaitForOptions): ActionWithEffects<Args, R> => {
+      (action as unknown as PrimitiveActionWithEffects<Args, R>).options(opts);
+      return wrapper as unknown as ActionWithEffects<Args, R>;
+    };
 
     wrapper.named = (name: string): ActionFunction<Args, R> => {
       action.named(name);

@@ -4,7 +4,6 @@ import { createAdapter } from '../../pom-universal/createAdapter';
 import type { ActionFunction as PrimitiveActionFunction } from '../../primitives/action';
 import { Collection } from '../../primitives/collection';
 import { formatActionCall } from './format';
-export { Action } from './action';
 
 type ComponentConstructor<T> = new (locator: Locator, page: Page) => T;
 

@@ -30,7 +30,7 @@ test.describe('State Queries', () => {
     await todoPage.addTodo('My task');
 
     // Get a TodoItem and query its states
-    const item = await todoPage.getTodoAt(0);
+    const item = await todoPage.items.at(0);
     expect(item).toBeDefined();
     expect(await item!.getText()).toBe('My task');
     expect(await item!.isCompleted()).toBe(false);
@@ -41,7 +41,7 @@ test.describe('State Queries', () => {
     await todoPage.goto();
     await todoPage.addTodos(['Task 1', 'Task 2', 'Task 3']);
 
-    const firstItem = await todoPage.getTodoAt(0);
+    const firstItem = await todoPage.items.at(0);
     await firstItem!.markAsCompleted();
 
     // States computed from filterByState
@@ -58,16 +58,16 @@ test.describe('Collection Operations', () => {
     await todoPage.goto();
     await todoPage.addTodos(['Active 1', 'Active 2', 'Will complete']);
 
-    const lastItem = await todoPage.getTodoAt(2);
+    const lastItem = await todoPage.items.at(2);
     await lastItem!.markAsCompleted();
 
     // Filter to get only completed items
-    const completedItems = await todoPage.getCompletedItems();
+    const completedItems = await todoPage.items.filter({ isCompleted: true }).all();
     expect(completedItems).toHaveLength(1);
     await expect(completedItems[0]!).toHaveState({ getText: 'Will complete' });
 
     // Filter to get only active items
-    const activeItems = await todoPage.getActiveItems();
+    const activeItems = await todoPage.items.filter({ isCompleted: false }).all();
     expect(activeItems).toHaveLength(2);
   });
 
@@ -77,7 +77,7 @@ test.describe('Collection Operations', () => {
     await todoPage.addTodos(['Find me', 'Not me', 'Neither']);
 
     // Find specific item by text
-    const item = await todoPage.findTodoByText('Find me');
+    const item = await todoPage.items.find({ getText: 'Find me' });
     expect(item).toBeDefined();
     // Verify found item's other state (text was already used for finding)
     await expect(item!).toHaveState({ isCompleted: false });
@@ -97,43 +97,40 @@ test.describe('Collection Operations', () => {
   });
 });
 
-test.describe('Component Composition', () => {
-  test('TodoItem composes Checkbox component', async ({ page }) => {
+test.describe('Page Object Model', () => {
+  test('TodoPage composes TodoItems through Collection', async ({ page }) => {
     const todoPage = new TodoPage(page);
     await todoPage.goto();
-    await todoPage.addTodo('Test composition');
+    await todoPage.addTodo('First task');
+    await todoPage.addTodo('Second task');
 
-    const item = await todoPage.getTodoAt(0);
+    await expect(todoPage).toHaveState({ itemCount: 2 });
 
-    // TodoItem.isCompleted delegates to Checkbox.isChecked
-    await expect(item!).toHaveState({ isCompleted: false });
-    await expect(item!.checkbox).toHaveState({ isChecked: false });
-
-    // Actions on composed components
-    await item!.checkbox.check();
-    await expect(item!).toHaveState({ isCompleted: true });
+    const first = await todoPage.items.at(0);
+    await expect(first!).toHaveState({ getText: 'First task', isCompleted: false });
   });
 
-  test('TodoPage composes NewTodoInput', async ({ page }) => {
+  test('page-level states derive from component states', async ({ page }) => {
     const todoPage = new TodoPage(page);
     await todoPage.goto();
+    await todoPage.addTodos(['Task A', 'Task B', 'Task C']);
 
-    // Verify input state
-    await expect(todoPage.newTodoInput).toHaveState({ isEmpty: true });
+    const first = await todoPage.items.at(0);
+    await first!.markAsCompleted();
 
-    // addTodo uses NewTodoInput internally
-    await todoPage.addTodo('Composed action');
-    await expect(todoPage).toHaveState({ itemCount: 1 });
+    await expect(todoPage).toHaveState({
+      itemCount: 3,
+      completedCount: 1,
+      activeCount: 2,
+    });
   });
 
-  test('nested Actions appear in test steps', async ({ page }) => {
+  test('Action methods appear as named steps in reports', async ({ page }) => {
     const todoPage = new TodoPage(page);
     await todoPage.goto();
     await todoPage.addTodo('Check steps');
 
-    const item = await todoPage.getTodoAt(0);
-
-    // markAsCompleted() calls checkbox.check() - both appear as steps
+    const item = await todoPage.items.at(0);
     await item!.markAsCompleted();
     await expect(item!).toHaveState({ isCompleted: true });
   });
@@ -146,7 +143,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Test item');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       expect(await item!.isCompleted()).toBe(false);
 
       // toggle action has effect: [isCompleted, (cur, prev) => cur === !prev]
@@ -163,7 +160,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Toggle test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       expect(await item!.isCompleted()).toBe(false);
 
       // Effect: [isCompleted, (cur, prev) => cur === !prev] waits for false => true
@@ -178,7 +175,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Toggle back test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await item!.markAsCompleted();
       expect(await item!.isCompleted()).toBe(true);
 
@@ -218,7 +215,7 @@ test.describe('Action Effects System', () => {
       expect(await todoPage.itemCount()).toBe(countBefore + 1);
 
       // Complete one item
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await item!.markAsCompleted();
       expect(await item!.isCompleted()).toBe(true);
       expect(await todoPage.completedCount()).toBe(1);
@@ -251,7 +248,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Relative test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
       // First toggle: false => true
       let before = await item!.isCompleted();
@@ -290,7 +287,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await item!.markAsCompleted();
       await expect(item!).toHaveState({ isCompleted: true });
 
@@ -305,7 +302,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await expect(item!).toHaveState({ isCompleted: false });
 
       // markAsCompleted has effect: [isCompleted, true]
@@ -321,7 +318,7 @@ test.describe('Action Effects System', () => {
       expect(await todoPage.itemCount()).toBe(3);
 
       // Complete all items
-      const allItems = await todoPage.getActiveItems();
+      const allItems = await todoPage.items.filter({ isCompleted: false }).all();
       for (const item of allItems) {
         await item.markAsCompleted();
       }
@@ -391,7 +388,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Toggle test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
       // Before-state: false
       expect(await item!.isCompleted()).toBe(false);
@@ -416,7 +413,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Timing test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
       // If effect waiting fails, the test would fail here
       // If effect succeeds, we know waitFor worked
@@ -480,9 +477,9 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Delete me');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
-      // delete is a method, not an Action with effects
+      // delete is an Action without effects
       await item!.delete();
 
       // After deletion, there should be no items
@@ -510,16 +507,13 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Parent test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
-      // markAsCompleted calls checkbox.check()
-      // checkbox.check has effect: [isChecked, true]
       // markAsCompleted has effect: [isCompleted, true]
-      // Both should wait for their effects
+      // The action waits for its effect before returning
       await item!.markAsCompleted();
 
       await expect(item!).toHaveState({ isCompleted: true });
-      await expect(item!.checkbox).toHaveState({ isChecked: true });
     });
   });
 
@@ -566,7 +560,7 @@ test.describe('Action Effects System', () => {
       await todoPage.goto();
       await todoPage.addTodo('Original text');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await expect(item!).toHaveState({ getText: 'Original text' });
 
       const newText = 'Updated text';
@@ -595,7 +589,7 @@ test.describe('State Assertions (Auto-Retry)', () => {
       await todoPage.addTodos(['Item 1', 'Item 2']);
 
       // Mark first item as completed
-      const firstItem = await todoPage.getTodoAt(0);
+      const firstItem = await todoPage.items.at(0);
       await firstItem!.markAsCompleted();
 
       // Assert multiple states at once - all must be true simultaneously
@@ -628,7 +622,7 @@ test.describe('State Assertions (Auto-Retry)', () => {
       await todoPage.goto();
       await todoPage.addTodo('Buy milk');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
 
       // Assert component state
       await expect(item!).toHaveState({
@@ -659,7 +653,7 @@ test.describe('State Assertions (Auto-Retry)', () => {
       await todoPage.goto();
       await todoPage.addTodo('Test');
 
-      const item = await todoPage.getTodoAt(0);
+      const item = await todoPage.items.at(0);
       await item!.markAsCompleted();
 
       // Poll component state

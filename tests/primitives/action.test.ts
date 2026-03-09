@@ -119,4 +119,96 @@ test.describe('Action()', () => {
 
     await expect(setReady()).rejects.toBeInstanceOf(ActionEffectError);
   });
+
+  test('.options({ timeout }) overrides the default 5s timeout', async () => {
+    let ready = false;
+
+    const isReady = State(async () => ready).named('isReady');
+
+    const setReady = Action(async () => {
+      ready = false;
+    })
+      .named('setReady')
+      .effect(isReady, true)
+      .options({ timeout: 200 });
+
+    const start = Date.now();
+    await expect(setReady()).rejects.toBeInstanceOf(ActionEffectError);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  test('.options({ stableFor }) requires effects to remain true', async () => {
+    let count = 0;
+    let flickering = true;
+
+    const isStable = State(async () => {
+      count++;
+      if (flickering && count === 3) return false;
+      return true;
+    }).named('isStable');
+
+    const stabilize = Action(async () => {
+      flickering = false;
+    })
+      .named('stabilize')
+      .effect(isStable, true)
+      .options({ stableFor: 100 });
+
+    await stabilize();
+    expect(await isStable()).toBe(true);
+  });
+
+  test('.options({ stableFor }) times out when effects flicker', async () => {
+    let callCount = 0;
+
+    const isStable = State(async () => {
+      callCount++;
+      return callCount % 3 !== 0;
+    }).named('isStable');
+
+    const flickerAction = Action(async () => {})
+      .named('flickerAction')
+      .effect(isStable, true)
+      .options({ timeout: 500, stableFor: 200 });
+
+    await expect(flickerAction()).rejects.toBeInstanceOf(ActionEffectError);
+  });
+
+  test('.options() is chainable with .effect()', async () => {
+    let value = 0;
+
+    const counter = State(async () => value).named('counter');
+
+    const increment = Action(async () => {
+      value += 1;
+    })
+      .named('increment')
+      .effect(counter, (current, previous) => current === previous + 1)
+      .options({ timeout: 2000 });
+
+    await increment();
+    expect(await counter()).toBe(1);
+  });
+
+  test('subsequent .options() calls override previous values', async () => {
+    let ready = false;
+
+    const isReady = State(async () => ready).named('isReady');
+
+    const setReady = Action(async () => {
+      ready = false;
+    })
+      .named('setReady')
+      .effect(isReady, true)
+      .options({ timeout: 5000 })
+      .options({ timeout: 200 });
+
+    const start = Date.now();
+    await expect(setReady()).rejects.toBeInstanceOf(ActionEffectError);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(1000);
+  });
 });

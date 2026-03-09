@@ -8,6 +8,7 @@ export type {
   ActionEffectBuilder,
   ActionFunction,
   ActionMeta,
+  ActionWithEffects,
   EffectValue,
   GroupEffectPredicate,
   ResolvedDeps,

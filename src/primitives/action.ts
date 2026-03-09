@@ -3,6 +3,7 @@ import { extractParamNames, formatValue } from './format';
 import { poll } from './poll';
 import type { StateFunction } from './state';
 import { StateBrandSymbol, StateNameSymbol } from './state';
+import type { WaitForOptions } from './wait';
 
 export interface ActionMeta {
   readonly name?: string;
@@ -55,18 +56,35 @@ export interface ActionEffectBuilder {
   effect: ActionEffectBuilder;
 }
 
+export type ActionWithEffects<Args extends unknown[], R> = ((...args: Args) => Promise<R>) & {
+  effect<T>(
+    state: StateFunction<T>,
+    expected: EffectValue<T>,
+  ): ActionWithEffects<Args, R>;
+  effect<D extends StateDeps>(
+    states: D,
+    predicate: GroupEffectPredicate<D>,
+  ): ActionWithEffects<Args, R>;
+  effect(
+    build: DeferredEffects<Args>,
+  ): ActionWithEffects<Args, R>;
+  options(opts: WaitForOptions): ActionWithEffects<Args, R>;
+  named(name: string): ActionWithEffects<Args, R>;
+  meta(): ActionMeta;
+};
+
 export type ActionFunction<Args extends unknown[], R> = ((...args: Args) => Promise<R>) & {
   effect<T>(
     state: StateFunction<T>,
     expected: EffectValue<T>,
-  ): ActionFunction<Args, R>;
+  ): ActionWithEffects<Args, R>;
   effect<D extends StateDeps>(
     states: D,
     predicate: GroupEffectPredicate<D>,
-  ): ActionFunction<Args, R>;
+  ): ActionWithEffects<Args, R>;
   effect(
     build: DeferredEffects<Args>,
-  ): ActionFunction<Args, R>;
+  ): ActionWithEffects<Args, R>;
   named(name: string): ActionFunction<Args, R>;
   meta(): ActionMeta;
 };
@@ -91,6 +109,7 @@ export function Action<Args extends unknown[], R>(
   fn: (...args: Args) => Promise<R>,
 ): ActionFunction<Args, R> {
   let actionName: string | undefined;
+  let effectOpts: WaitForOptions = {};
   const params = extractParamNames(fn);
   const staticEffects: EffectDefinition[] = [];
   const deferredEffects: DeferredEffects<Args>[] = [];
@@ -103,7 +122,9 @@ export function Action<Args extends unknown[], R>(
 
     const snapshots = await captureSnapshots(resolvedEffects);
     const result = await fn(...args);
-    const timeout = 5000;
+    const timeout = effectOpts.timeout ?? 5000;
+    const stableFor = effectOpts.stableFor ?? 0;
+    let stableSince: number | null = null;
 
     try {
       await poll(async () => {
@@ -125,7 +146,16 @@ export function Action<Args extends unknown[], R>(
         }
 
         if (stateMismatches.length > 0 || groupMismatches.length > 0) {
+          stableSince = null;
           throw new PendingActionEffectsError(stateMismatches, groupMismatches, timeout);
+        }
+
+        if (stableFor > 0) {
+          const now = Date.now();
+          if (stableSince === null) stableSince = now;
+          if (now - stableSince < stableFor) {
+            throw new PendingActionEffectsError([], [], timeout);
+          }
         }
       }, { timeout });
     } catch (error) {
@@ -133,7 +163,7 @@ export function Action<Args extends unknown[], R>(
         throw new ActionEffectError(
           formatActionCall(actionName ?? fn.name ?? 'unnamed action', params, args),
           args,
-          error.timeout,
+          timeout,
           error.message,
           buildActionEffectCause(error),
         );
@@ -147,15 +177,20 @@ export function Action<Args extends unknown[], R>(
   wrapper.effect = ((
     first: StateFunction<unknown> | StateDeps | DeferredEffects<Args>,
     second?: unknown,
-  ): ActionFunction<Args, R> => {
+  ): ActionWithEffects<Args, R> => {
     if (typeof first === 'function' && !(StateBrandSymbol in first)) {
       deferredEffects.push(first as DeferredEffects<Args>);
-      return wrapper;
+      return wrapper as unknown as ActionWithEffects<Args, R>;
     }
 
     appendEffect(staticEffects, first as StateFunction<unknown> | StateDeps, second);
-    return wrapper;
+    return wrapper as unknown as ActionWithEffects<Args, R>;
   }) as ActionFunction<Args, R>['effect'];
+
+  (wrapper as unknown as ActionWithEffects<Args, R>).options = (opts: WaitForOptions): ActionWithEffects<Args, R> => {
+    effectOpts = opts;
+    return wrapper as unknown as ActionWithEffects<Args, R>;
+  };
 
   wrapper.named = (name: string): ActionFunction<Args, R> => {
     actionName = name;
