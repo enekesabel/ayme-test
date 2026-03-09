@@ -49,7 +49,7 @@ export class TodoItem extends PageComponent {
 
   toggle = this.Action(async () => {
     await this.checkbox.toggle();
-  }).effect(this.isCompleted, (current, previous) => current === !previous);
+  }).effect(this.isCompleted, (cur, prev) => cur === !prev);
 
   markAsCompleted = this.Action(async () => {
     await this.checkbox.check();
@@ -71,9 +71,6 @@ export class TodoItem extends PageComponent {
   }).effect((effect, newText) => effect(this.getText, newText));
 }
 
-/**
- * Represents the TodoMVC page.
- */
 export class TodoPage extends PageObject {
   locators = this.Locators({
     clearCompletedButton: this.page.locator('.clear-completed'),
@@ -108,17 +105,17 @@ export class TodoPage extends PageObject {
 
   addTodo = this.Action(async (text: string) => {
     await this.newTodoInput.addTodo(text);
-  }).effect(this.itemCount, (current, previous) => current === previous + 1);
+  }).effect(this.itemCount, (cur, prev) => cur === prev + 1);
 
-  async addTodos(texts: string[]) {
+  addTodos = this.Action(async (texts: string[]) => {
     for (const text of texts) {
       await this.addTodo(text);
     }
-  }
+  });
 
-  async toggleAll() {
+  toggleAll = this.Action(async () => {
     await this.toggleAllCheckbox.toggle();
-  }
+  });
 
   clearCompleted = this.Action(async () => {
     await this.locators.clearCompletedButton.click();
@@ -137,20 +134,4 @@ export class TodoPage extends PageObject {
     await this.locators.filterCompletedLink.click();
     await this.page.waitForURL(/.*#\/completed/);
   }).effect(this.activeFilter, 'completed');
-
-  async getTodoAt(index: number): Promise<TodoItem | undefined> {
-    return this.items.at(index);
-  }
-
-  async findTodoByText(text: string): Promise<TodoItem | undefined> {
-    return this.items.find({ getText: text });
-  }
-
-  async getCompletedItems(): Promise<TodoItem[]> {
-    return this.items.filter({ isCompleted: true }).all();
-  }
-
-  async getActiveItems(): Promise<TodoItem[]> {
-    return this.items.filter({ isCompleted: false }).all();
-  }
 }

@@ -2,6 +2,7 @@ import {
   Action,
   State,
   type ActionFunction,
+  type ActionWithEffects,
 } from '../../src/primitives';
 
 const text = State(async () => 'before').named('text');
@@ -31,6 +32,42 @@ const setReady = Action(async () => {})
 const typedRename: ActionFunction<[string], void> = rename;
 const typedAddMany: ActionFunction<[number], void> = addMany;
 const typedSetReady: ActionFunction<[], void> = setReady;
+
+// .effect() returns ActionWithEffects which has .options()
+const withEffects: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true);
+
+const withOptions: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true)
+  .options({ timeout: 1000 });
+
+const withStableFor: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true)
+  .options({ timeout: 1000, stableFor: 200 });
+
+// .options() is chainable with further .effect() and .options()
+const chainedEffectsAndOptions: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true)
+  .effect(text, 'done')
+  .options({ timeout: 500 });
+
+// .options() followed by another .options() overrides
+const overriddenOptions: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true)
+  .options({ timeout: 1000 })
+  .options({ timeout: 500 });
+
+// ActionWithEffects is assignable to ActionFunction
+const asFunction: ActionFunction<[], void> = withEffects;
+
+// .named() on ActionFunction returns ActionFunction (no .options())
+const namedAction: ActionFunction<[], void> = Action(async () => {}).named('test');
+
+// @ts-expect-error .options() is NOT available on ActionFunction (before .effect())
+Action(async () => {}).options({ timeout: 1000 });
+
+// @ts-expect-error .options() is NOT available after .named() on ActionFunction
+Action(async () => {}).named('test').options({ timeout: 1000 });
 
 // @ts-expect-error wrong expected type for string state
 Action(async () => {}).effect(text, 123);

@@ -6,7 +6,7 @@ Playwright-compatible entrypoint with state-driven testing extensions.
 
 `@qaide/test/playwright` is a drop-in replacement for `@playwright/test` imports. It re-exports all of Playwright's API and overrides `test` and `expect` with extended versions that add `toHaveState` and typed POM support.
 
-It also exports typed POM classes (`PageObject`, `PageComponent`) and the `@Action` decorator for step reporting.
+It also exports typed POM classes (`PageObject`, `PageComponent`) with built-in `this.State(...)`, `this.Action(...)`, and `this.Collection(...)` factories. Actions defined via `this.Action(...)` automatically appear as named steps in Playwright's HTML report and trace viewer.
 
 ---
 
@@ -16,7 +16,6 @@ It also exports typed POM classes (`PageObject`, `PageComponent`) and the `@Acti
 
 - `test` — Playwright test (re-export)
 - `expect` — extended expect with `toHaveState` for `PageFragment` instances
-- `Action` — decorator for POM methods
 - `PageObject`, `PageComponent`, `PageFragment` — Playwright POM classes
 - All other Playwright exports (`defineConfig`, `devices`, etc.)
 
@@ -28,64 +27,30 @@ It also exports typed POM classes (`PageObject`, `PageComponent`) and the `@Acti
 
 ---
 
-## `@Action` Decorator
+## Step Reporting
 
-Wraps async POM methods in `test.step(...)` for readable HTML reports and trace viewer output.
-
-**Two overloads:**
-
-```typescript
-// Auto-generates step name from class and method name
-@Action
-
-// Overrides the action name used in the step
-@Action('custom step name')
-```
+Actions created via `this.Action(...)` in Playwright POM classes are automatically wrapped in `test.step(...)`. Step names include the class name, property name, and argument values — visible in Playwright's HTML report and trace viewer.
 
 **Step name format**
 
-Step names always follow: `{actionName}(param1: value1, param2: value2)`.
+Step names follow: `{ClassName.propertyName}(param1: value1, param2: value2)`.
 
-- Parameter names are extracted from the method signature at decoration time.
+- Parameter names are extracted from the function signature.
 - Values are formatted inline: strings as `"value"`, numbers/booleans as-is, objects as JSON.
-- When there are no arguments: `{actionName}()`.
+- When there are no arguments: `{ClassName.propertyName}()`.
 
-| | Step produced |
-|---|---|
-| `@Action` on `TodoPage.goto()` | `TodoPage.goto()` |
-| `@Action` on `TodoPage.addTodo('Buy milk')` | `TodoPage.addTodo(text: "Buy milk")` |
-| `@Action('add')` on `addTodo('Buy milk')` | `add(text: "Buy milk")` |
+| Action definition | Call | Step produced |
+|---|---|---|
+| `goto = this.Action(async () => { ... })` | `todoPage.goto()` | `TodoPage.goto()` |
+| `addTodo = this.Action(async (text: string) => { ... })` | `todoPage.addTodo('Buy milk')` | `TodoPage.addTodo(text: "Buy milk")` |
 
-**Parameters** (when using the string form)
-
-| | |
-|---|---|
-| `stepName` | Replaces the auto-generated `ClassName.methodName` prefix. Argument formatting still applies. |
-
-**Example**
+Use `.named('custom name')` to override the auto-generated name:
 
 ```typescript
-import { Action, PageObject } from '@qaide/test/playwright';
-
-class TodoPage extends PageObject {
-  locators = this.Locators({
-    newTodoInput: this.page.locator('.new-todo'),
-  });
-
-  @Action                            // step: 'TodoPage.goto()'
-  async goto() {
-    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
-  }
-
-  @Action                            // step: 'TodoPage.addTodo(text: "Buy milk")'
-  async addTodo(text: string) {
-    await this.locators.newTodoInput.fill(text);
-    await this.locators.newTodoInput.press('Enter');
-  }
-
-  @Action('add item')                // step: 'add item(text: "Buy milk")'
-  async addItem(text: string) { /* ... */ }
-}
+addItem = this.Action(async (text: string) => {
+  // ...
+}).named('add');
+// step: 'add(text: "Buy milk")'
 ```
 
 ---
@@ -150,22 +115,6 @@ await expect(todoPage).toHaveState(
 
 ## POM Classes
 
-All POM classes provide a `this.Locators()` / `locators` system for type-safe locator management. Use `this.Locators()` to declare a component's locators as a field; skip the field for components that only use `root`. Locator types are auto-inferred — no generics needed.
-
-`this.Locators()` defines the **default** locator set — derive customized instances with `WithLocators(...)` when you need to swap individual locators. See [`pom-universal` docs](../pom-universal/README.md#override-mechanism) for the adapter-level API.
-
-### `PageFragment`
-
-Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with a `page` property and Playwright-specific collection resolution.
-
-| | |
-|---|---|
-| `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
-| `this.locators` | Type-safe access to locators declared via `this.Locators()`. |
-| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
-| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
-| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
-
 ### `PageObject`
 
 Base class for full-page objects. Takes a `Page` as its constructor argument.
@@ -177,20 +126,6 @@ class PageObject {
 }
 ```
 
-Page-scoped locators are declared via `this.Locators()`:
-
-```typescript
-class TodoPage extends PageObject {
-  locators = this.Locators({
-    newTodoInput: this.page.locator('.new-todo'),
-    todoItems: this.page.locator('.todo-list li'),
-  });
-
-  items = this.Collection(TodoItem, this.locators.todoItems);
-  itemCount = this.State(() => this.items.count());
-}
-```
-
 ### `PageComponent`
 
 Base class for locator-rooted components. Takes only a `Locator` — `page` is derived automatically from `root.page()`.
@@ -198,102 +133,54 @@ Base class for locator-rooted components. Takes only a `Locator` — `page` is d
 ```typescript
 class PageComponent {
   constructor(root: Locator)
+  readonly root: Locator
   readonly page: Page   // derived from root.page()
 }
 ```
 
-Components use `this.root` to scope their locators via `this.Locators()`. The `root` locator is **automatically included** in `this.locators`:
+### `PageFragment`
 
-```typescript
-class TodoItem extends PageComponent {
-  locators = this.Locators({
-    label: this.root.locator('label'),
-    destroyButton: this.root.locator('.destroy'),
-  });
+Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with Playwright-specific collection resolution and automatic step reporting.
 
-  // this.locators.root is auto-included
-  // this.locators.label and this.locators.destroyButton are from this.Locators()
-  getText = this.State(() => this.locators.label.innerText());
-  isCompleted = this.State(() =>
-    this.locators.root.getAttribute('class').then(c => (c ?? '').includes('completed'))
-  );
-}
-```
-
-Components with no additional locators can skip the `locators` field entirely — `this.locators.root` is still available:
-
-```typescript
-class Checkbox extends PageComponent {
-  isChecked = this.State(() => this.locators.root.isChecked());
-
-  @Action
-  async toggle() { await this.locators.root.click(); }
-}
-```
+| | |
+|---|---|
+| `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
+| `this.Action(fn)` | Creates an auto-named `ActionFunction`. Wraps calls in `test.step(...)`. Supports `.effect()` chaining. |
+| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
+| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
+| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
 
 ---
 
 ## End-To-End Example
 
 ```typescript
-import { test, expect, Action, PageObject, PageComponent } from '@qaide/test/playwright';
-
-class Checkbox extends PageComponent {
-  isChecked = this.State(() => this.locators.root.isChecked());
-
-  @Action
-  async toggle() { await this.locators.root.click(); }
-}
+import { test, expect, PageObject, PageComponent } from '@qaide/test/playwright';
 
 class TodoItem extends PageComponent {
-  locators = this.Locators({
-    label: this.root.locator('label'),
-    destroyButton: this.root.locator('.destroy'),
-    toggle: this.root.locator('.toggle'),
-  });
+  checkbox = this.root.locator('.toggle');
 
-  checkbox = new Checkbox(this.locators.toggle);
-
-  getText = this.State(() => this.locators.label.innerText());
   isCompleted = this.State(() => this.checkbox.isChecked());
 
-  @Action async toggle() { await this.checkbox.toggle(); }
-  @Action async delete() {
-    await this.locators.root.hover();
-    await this.locators.destroyButton.click();
-  }
+  toggle = this.Action(async () => {
+    await this.checkbox.click();
+  }).effect(this.isCompleted, (cur, prev) => cur === !prev);
 }
 
 class TodoPage extends PageObject {
-  locators = this.Locators({
-    newTodoInput: this.page.locator('.new-todo'),
-    todoItems: this.page.locator('.todo-list li'),
-    clearCompletedButton: this.page.locator('.clear-completed'),
-    itemsLeftCounter: this.page.locator('.todo-count'),
+  newTodoInput = this.page.locator('.new-todo');
+
+  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
+  itemCount = this.State(() => this.items.count());
+
+  goto = this.Action(async () => {
+    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
   });
 
-  items = this.Collection(TodoItem, this.locators.todoItems);
-
-  itemCount = this.State(() => this.items.count());
-  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
-  itemsLeftText = this.State(() => this.locators.itemsLeftCounter.innerText());
-
-  @Action
-  async goto() {
-    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
-  }
-
-  @Action
-  async addTodo(text: string) {
-    await this.locators.newTodoInput.fill(text);
-    await this.locators.newTodoInput.press('Enter');
-  }
-
-  @Action
-  async clearCompleted() {
-    await this.locators.clearCompletedButton.click();
-    await this.waitFor(this.completedCount, 0);
-  }
+  addTodo = this.Action(async (text: string) => {
+    await this.newTodoInput.fill(text);
+    await this.newTodoInput.press('Enter');
+  }).effect(this.itemCount, (cur, prev) => cur === prev + 1);
 }
 
 test('adds and completes a todo', async ({ page }) => {
@@ -303,10 +190,9 @@ test('adds and completes a todo', async ({ page }) => {
   await todoPage.addTodo('Ship docs');
 
   const first = await todoPage.items.at(0);
-  await expect(first).toBeDefined();
   await first!.toggle();
 
-  await expect(todoPage).toHaveState({ itemCount: 1, completedCount: 1 });
+  await expect(todoPage).toHaveState({ itemCount: 1 });
 });
 ```
 
@@ -317,12 +203,11 @@ test('adds and completes a todo', async ({ page }) => {
 | Symptom | Fix |
 |---|---|
 | `State "..." is not a valid state function` | The key in `toHaveState` is not a state property on that fragment. Check the property name. |
-| No action step in report | Ensure the method is decorated with `@Action`. Only `async` methods are supported. |
-| `@Action` throws `TypeError: @Action can only decorate methods` | Decorator applied to a non-method (e.g. a property). Only works on class methods. |
+| No action step in report | Ensure the action is created with `this.Action(...)`. Plain methods and arrow functions don't produce steps. |
 
 ---
 
 ## See Also
 
-- Framework-agnostic primitives (`State`, `Collection`, `waitFor`): [`src/primitives/README.md`](../primitives/README.md)
+- Framework-agnostic primitives (`State`, `Action`, `Collection`, `waitFor`): [`src/primitives/README.md`](../primitives/README.md)
 - Universal POM base classes and adapter pattern: [`src/pom-universal/README.md`](../pom-universal/README.md)
