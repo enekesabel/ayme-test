@@ -1,6 +1,8 @@
 # Publishing Guide for @qaide/test
 
-This repository (`qaide-testing`) uses Conventional Commits and release-please for automated versioning, changelog generation, GitHub releases, and npm publishing.
+This repository (`qaide-testing`) uses two release paths:
+- a manual-only `release-please` workflow kept ready for stable releases
+- a continuous beta publish workflow for experimentation on `main`
 
 ## Release Model
 
@@ -70,12 +72,12 @@ Workflow: `.github/workflows/ci.yml`
 - Pull requests run a `commitlint` job across commits in the PR range.
 - Hooks can be bypassed locally, so CI remains the source of truth.
 
-## Automated Releases (release-please)
+## Stable Releases (release-please)
 
 Workflow: `.github/workflows/release-please.yml`
 
 How it works:
-1. Pushes to `main` trigger release-please.
+1. Maintainers trigger the workflow manually with `workflow_dispatch`.
 2. release-please opens/updates a release PR with:
    - version updates
    - `CHANGELOG.md` updates
@@ -101,14 +103,20 @@ Optional:
 ## Publishing Channels
 
 Stable releases:
-- automated by the release-please workflow, published with the `latest` tag.
+- handled by the manual `release-please` workflow
+- published with npm's `latest` tag
 
-Beta/pre-release channel (manual):
+Beta/pre-release channel:
+- handled by `.github/workflows/beta-release.yml`
+- runs after the `CI` workflow completes successfully for `main`
+- can also be triggered manually with `workflow_dispatch`
+- computes a unique version from the current base version in `package.json`
+- publishes to npm with the `beta` dist-tag
+- publishes the exact commit SHA that passed CI
 
-```bash
-pnpm version prerelease --preid beta
-pnpm publish --tag beta --access public
-```
+Version shape for betas:
+- if `package.json` is `0.1.0-beta.0`, workflow publishes versions like `0.1.0-beta.<run_number>.<run_attempt>`
+- this keeps prerelease versions unique without committing version bumps back to git
 
 ## Maintainer Quick Checks
 
@@ -128,6 +136,6 @@ pnpm exec commitlint --from HEAD~10 --to HEAD --verbose
 
 ## Troubleshooting
 
-- `403 Forbidden`: verify npm login, org membership, and package permission.
+- `403 Forbidden`: verify the npm token in `NPM_TOKEN` belongs to an account with publish rights for `@qaide/test`.
 - `402 Payment Required`: ensure publish is public for this scoped package.
 - Package not found after publish: check [npm package page](https://www.npmjs.com/package/@qaide/test).

@@ -1,0 +1,58 @@
+name: beta-release
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10.4.1"
+
+jobs:
+  publish-beta:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Set beta version
+        id: beta-version
+        shell: bash
+        run: |
+          CURRENT_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version)")
+          BASE_VERSION="${CURRENT_VERSION%%-*}"
+          BETA_VERSION="${BASE_VERSION}-beta.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          npm version "$BETA_VERSION" --no-git-tag-version
+          echo "version=$BETA_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish beta to npm
+        run: pnpm publish --tag beta --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
