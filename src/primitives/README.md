@@ -11,7 +11,7 @@ Most E2E tests become brittle because they assert through implementation details
 The mental model:
 
 - `State` — a named live query: `() => Promise<T>`. Encapsulates how to read a fact about the system.
-- `waitFor` — a polling assertion engine. Waits until one or more states match expectations.
+- `waitFor` — a polling assertion engine. Waits until all states match expectations.
 - `Collection` — typed item sets with state-based filtering and lookup.
 
 **When to use primitives directly**

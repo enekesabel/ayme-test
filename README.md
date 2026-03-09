@@ -188,7 +188,7 @@ Outside POM classes, use `Collection.create(...)` from `@qaide/test/primitives` 
 
 ### `@qaide/test/pom-universal` — POM adapter layer
 
-The `PageFragment` base class and `createPomAdapter` factory that the Playwright package is built on. Use this when:
+The `PageFragment` base class that the Playwright package is built on. Use this when:
 
 - building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.)
 - extending the POM model with driver-specific behavior

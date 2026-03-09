@@ -1,32 +1,48 @@
-import { createPomAdapter } from '../../pom-universal';
 import { Page, Locator } from '@playwright/test';
 import { PageFragment as GenericPageFragment } from '../../pom-universal/PageFragment';
+import { Collection } from '../../primitives/collection';
 export { Action } from './action';
+
+type ComponentConstructor<T> = new (locator: Locator, page: Page) => T;
 
 /**
  * Playwright-specific PageFragment.
- * Extends the generic PageFragment with:
- * - `Locator.all()` collection resolution
+ * Adds `page`, `resolveAll`, and the `Collection(ComponentClass, locator)` shorthand.
  */
-abstract class PlaywrightPageFragment extends GenericPageFragment<Page, Locator> {
-  get page(): Page {
-    return this.driver;
+abstract class PlaywrightPageFragment extends GenericPageFragment {
+  constructor(readonly page: Page) {
+    super();
   }
 
-  protected async resolveAll<T>(
-    Cls: new (locator: Locator, driver: Page) => T,
+  private async resolveAll<T>(
+    Cls: ComponentConstructor<T>,
     locator: Locator
   ): Promise<T[]> {
     return (await locator.all()).map(l => new Cls(l, this.page));
   }
-}
 
-const { PageObject, PageComponent: BasePageComponent } = createPomAdapter(PlaywrightPageFragment);
-
-// Extend the base page component to automatically get the driver from the locator
-class PageComponent extends BasePageComponent {
-  constructor(root: Locator) {
-    super(root, root.page());
+  protected override Collection<T>(resolver: () => Promise<T[]>): Collection<T>;
+  protected override Collection<T>(ComponentClass: ComponentConstructor<T>, locator: Locator): Collection<T>;
+  protected override Collection<T>(
+    first: (() => Promise<T[]>) | ComponentConstructor<T>,
+    locator?: Locator
+  ): Collection<T> {
+    if (locator === undefined) {
+      return super.Collection(first as () => Promise<T[]>);
+    }
+    return super.Collection(() => this.resolveAll(
+      first as ComponentConstructor<T>,
+      locator,
+    ));
   }
 }
+
+abstract class PageObject extends PlaywrightPageFragment {}
+
+abstract class PageComponent extends PlaywrightPageFragment {
+  constructor(readonly root: Locator) {
+    super(root.page());
+  }
+}
+
 export { PlaywrightPageFragment as PageFragment, PageObject, PageComponent };
