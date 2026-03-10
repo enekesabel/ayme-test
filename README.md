@@ -9,7 +9,7 @@ Most E2E tests become brittle because they assert through implementation details
 `@qaide/test` offers a different model — define *what should be true* as named semantic queries (`State`), then assert those queries directly:
 
 - **`State` + `waitFor`** — framework-agnostic semantic state queries and polling assertions. Define facts about the system (`itemCount`, `isReady`) and wait for them to become true.
-- **Semantic POM** *(optional)* — structure tests with typed page objects and components. Each POM class encapsulates its states (`this.State(...)`) and collections (`this.Collection(...)`), keeping implementation details out of tests.
+- **Semantic POM** — structure tests with typed page objects and components. Each POM class encapsulates its locators, states (`this.State(...)`), and collections (`this.Collection(...)`), keeping implementation details out of tests.
 - **`@Action` + `toHaveState`** 🎭 *(Playwright only)* — `@Action` wraps methods in `test.step(...)` for readable reports; `toHaveState` provides retrying state assertions on any POM or plain stateful object.
 
 Implementation details stay in one place. Tests express intent and stay resilient to UI changes.
@@ -35,29 +35,36 @@ npx playwright test
 ## Quick Start
 
 ```typescript
+import type { Locator } from '@playwright/test';
 import { test, expect, Action, PageObject, PageComponent } from '@qaide/test/playwright';
 
 class TodoItem extends PageComponent {
-  private checkbox = this.root.locator('.toggle');
+  locators = this.Locators({
+    label: this.root.locator('label'),
+    checkbox: this.root.locator('.toggle'),
+  });
 
   // Semantic state query — encapsulates how to read "is this completed"
   isCompleted = this.State(async () =>
-    (await this.root.getAttribute('class') ?? '').includes('completed')
+    (await this.locators.root.getAttribute('class') ?? '').includes('completed')
   );
 
-  // @Action wraps the method in test.step(...) for trace viewer + report output
+  getText = this.State(() => this.locators.label.innerText());
+
   @Action
   async toggle() {
-    await this.checkbox.click();
+    await this.locators.checkbox.click();
   }
 }
 
 class TodoPage extends PageObject {
-  private newTodoInput = this.page.locator('.new-todo');
-  private todoItems = this.page.locator('.todo-list li');
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoItems: this.page.locator('.todo-list li'),
+  });
 
-  // Collection backed by a component class and a Playwright locator
-  items = this.Collection(TodoItem, this.todoItems);
+  // Collection backed by a component class and a locator
+  items = this.Collection(TodoItem, this.locators.todoItems);
 
   // State derived from the collection
   itemCount = this.State(async () => this.items.count());
@@ -69,8 +76,8 @@ class TodoPage extends PageObject {
 
   @Action
   async addTodo(text: string) {
-    await this.newTodoInput.fill(text);
-    await this.newTodoInput.press('Enter');
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
   }
 }
 
@@ -101,7 +108,7 @@ For the full 🎭 Playwright API reference (all exports, `@Action` step names, `
 Inside a POM class, `this.State(...)` auto-names states from the property key:
 
 ```typescript
-itemCount = this.State(async () => this.todoItems.count());
+itemCount = this.State(async () => this.locators.todoItems.count());
 // named 'TodoPage.itemCount' — shown in error messages
 
 const n = await todoPage.itemCount();           // read
@@ -110,6 +117,31 @@ await expect(todoPage).toHaveState({ itemCount: 3 }); // assert 🎭
 ```
 
 `State` and `waitFor` are part of [`@qaide/test/primitives`](src/primitives/README.md) and work without Playwright. `toHaveState` 🎭 is Playwright-specific.
+
+### Locators — typed locator management
+*Universal POM · [`@qaide/test/pom-universal`](src/pom-universal/README.md)*
+
+Use `this.Locators()` to declare a component's locators as a typed field. On `PageComponent`s, `root` is automatically included. Components that only use `root` can skip the field entirely. Types are **auto-inferred** — no generics needed.
+
+```typescript
+class SearchPage extends PageObject {
+  locators = this.Locators({
+    searchInput: this.page.locator('#search'),
+    resultList: this.page.locator('.results'),
+  });
+
+  // Type-safe: only keys from this.Locators() are valid
+  resultCount = this.State(() => this.locators.resultList.count());
+}
+```
+
+For `PageComponent`s, `root` is automatically included in `locators`:
+
+```typescript
+class Checkbox extends PageComponent {
+  isChecked = this.State(() => this.locators.root.isChecked());
+}
+```
 
 ### `@Action` — step reporting 🎭
 *Playwright only · [`@qaide/test/playwright`](src/playwright/README.md)*
@@ -157,8 +189,12 @@ Inside a POM class, use `this.Collection(...)` to declare collections as propert
 
 ```typescript
 class TodoPage extends PageObject {
+  locators = this.Locators({
+    todoItems: this.page.locator('.todo-list li'),
+  });
+
   // Component shorthand: resolves each locator into a TodoItem instance
-  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
+  items = this.Collection(TodoItem, this.locators.todoItems);
 }
 ```
 
@@ -218,7 +254,7 @@ Outside POM classes, use `Collection.create(...)` from `@qaide/test/primitives` 
 
 ### `@qaide/test/pom-universal` — POM adapter layer
 
-The `PageFragment` base class that the Playwright package is built on. Use this when:
+The `PageFragment` base class and `createAdapter` factory that the Playwright package is built on. Use this when:
 
 - building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.)
 - extending the POM model with driver-specific behavior

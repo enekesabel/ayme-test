@@ -11,6 +11,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
     let isComplete = false;
 
     class TestComponent extends PageComponent {
+      defaultLocators() { return {}; }
       isCompleted = this.State(async () => isComplete);
     }
 
@@ -35,6 +36,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
     let isLoading = true;
 
     class TestPage extends PageObject {
+      defaultLocators() { return {}; }
       constructor(p: any) {
         super(p);
       }
@@ -69,6 +71,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
     let count = 0;
 
     class TestComponent extends PageComponent {
+      defaultLocators() { return {}; }
       itemCount = this.State(async () => count);
     }
 
@@ -91,6 +94,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
 
   test('toHaveState times out with proper error message', async ({ page }) => {
     class TestComponent extends PageComponent {
+      defaultLocators() { return {}; }
       boolState = this.State(async () => false);
       numState = this.State(async () => 42);
     }
@@ -115,6 +119,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
 
   test('toHaveState with empty expectations resolves immediately', async ({ page }) => {
     class TestComponent extends PageComponent {
+      defaultLocators() { return {}; }
       someState = this.State(async () => 'value');
     }
 
@@ -126,6 +131,7 @@ test.describe('expect().toHaveState Runtime Behavior', () => {
 
   test('State attaches inferred name after invocation', async ({ page }) => {
     class TestComponent extends PageComponent {
+      defaultLocators() { return {}; }
       isCompleted = this.State(async () => true);
     }
 

@@ -13,6 +13,7 @@ import { PageComponent, PageObject } from '../../src/playwright/pom';
 // ============ Test Component with Various State Types ============
 
 class TestComponent extends PageComponent {
+  defaultLocators() { return {}; }
   // States with different return types
   boolState = this.State(async () => true);
   numState = this.State(async () => 42);
@@ -23,6 +24,7 @@ class TestComponent extends PageComponent {
 }
 
 class TestPage extends PageObject {
+  defaultLocators() { return {}; }
   constructor(page: any) {
     super(page);
   }
