@@ -68,6 +68,10 @@ Step names always follow: `{actionName}(param1: value1, param2: value2)`.
 import { Action, PageObject } from '@qaide/test/playwright';
 
 class TodoPage extends PageObject {
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+  });
+
   @Action                            // step: 'TodoPage.goto()'
   async goto() {
     await this.page.goto('https://demo.playwright.dev/todomvc/#/');
@@ -75,8 +79,8 @@ class TodoPage extends PageObject {
 
   @Action                            // step: 'TodoPage.addTodo(text: "Buy milk")'
   async addTodo(text: string) {
-    await this.page.locator('.new-todo').fill(text);
-    await this.page.locator('.new-todo').press('Enter');
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
   }
 
   @Action('add item')                // step: 'add item(text: "Buy milk")'
@@ -146,6 +150,22 @@ await expect(todoPage).toHaveState(
 
 ## POM Classes
 
+All POM classes provide a `this.Locators()` / `locators` system for type-safe locator management. Use `this.Locators()` to declare a component's locators as a field; skip the field for components that only use `root`. Locator types are auto-inferred — no generics needed.
+
+`this.Locators()` defines the **default** locator set — defaults can be overridden at instantiation time. See [`pom-universal` docs](../pom-universal/README.md#constructor-overrides-options-bag) for the override pattern.
+
+### `PageFragment`
+
+Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with a `page` property and Playwright-specific collection resolution.
+
+| | |
+|---|---|
+| `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
+| `this.locators` | Type-safe access to locators declared via `this.Locators()`. |
+| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
+| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
+| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
+
 ### `PageObject`
 
 Base class for full-page objects. Takes a `Page` as its constructor argument.
@@ -157,6 +177,20 @@ class PageObject {
 }
 ```
 
+Page-scoped locators are declared via `this.Locators()`:
+
+```typescript
+class TodoPage extends PageObject {
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoItems: this.page.locator('.todo-list li'),
+  });
+
+  items = this.Collection(TodoItem, this.locators.todoItems);
+  itemCount = this.State(() => this.items.count());
+}
+```
+
 ### `PageComponent`
 
 Base class for locator-rooted components. Takes only a `Locator` — `page` is derived automatically from `root.page()`.
@@ -164,21 +198,38 @@ Base class for locator-rooted components. Takes only a `Locator` — `page` is d
 ```typescript
 class PageComponent {
   constructor(root: Locator)
-  readonly root: Locator
   readonly page: Page   // derived from root.page()
 }
 ```
 
-### `PageFragment`
+Components use `this.root` to scope their locators via `this.Locators()`. The `root` locator is **automatically included** in `this.locators`:
 
-Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with Playwright-specific collection resolution.
+```typescript
+class TodoItem extends PageComponent {
+  locators = this.Locators({
+    label: this.root.locator('label'),
+    destroyButton: this.root.locator('.destroy'),
+  });
 
-| | |
-|---|---|
-| `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
-| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
-| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
-| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
+  // this.locators.root is auto-included
+  // this.locators.label and this.locators.destroyButton are from this.Locators()
+  getText = this.State(() => this.locators.label.innerText());
+  isCompleted = this.State(() =>
+    this.locators.root.getAttribute('class').then(c => (c ?? '').includes('completed'))
+  );
+}
+```
+
+Components with no additional locators can skip the `locators` field entirely — `this.locators.root` is still available:
+
+```typescript
+class Checkbox extends PageComponent {
+  isChecked = this.State(() => this.locators.root.isChecked());
+
+  @Action
+  async toggle() { await this.locators.root.click(); }
+}
+```
 
 ---
 
@@ -187,25 +238,45 @@ Playwright-specific base class shared by both `PageObject` and `PageComponent`. 
 ```typescript
 import { test, expect, Action, PageObject, PageComponent } from '@qaide/test/playwright';
 
-class TodoItem extends PageComponent {
-  protected readonly checkbox = this.root.locator('.toggle');
-
-  isCompleted = this.State(async () =>
-    (await this.root.getAttribute('class') ?? '').includes('completed')
-  );
+class Checkbox extends PageComponent {
+  isChecked = this.State(() => this.locators.root.isChecked());
 
   @Action
-  async toggle() {
-    await this.checkbox.click();
+  async toggle() { await this.locators.root.click(); }
+}
+
+class TodoItem extends PageComponent {
+  locators = this.Locators({
+    label: this.root.locator('label'),
+    destroyButton: this.root.locator('.destroy'),
+    toggle: this.root.locator('.toggle'),
+  });
+
+  checkbox = new Checkbox(this.locators.toggle);
+
+  getText = this.State(() => this.locators.label.innerText());
+  isCompleted = this.State(() => this.checkbox.isChecked());
+
+  @Action async toggle() { await this.checkbox.toggle(); }
+  @Action async delete() {
+    await this.locators.root.hover();
+    await this.locators.destroyButton.click();
   }
 }
 
 class TodoPage extends PageObject {
-  private newTodoInput = this.page.locator('.new-todo');
-  private todoItems = this.page.locator('.todo-list li');
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoItems: this.page.locator('.todo-list li'),
+    clearCompletedButton: this.page.locator('.clear-completed'),
+    itemsLeftCounter: this.page.locator('.todo-count'),
+  });
 
-  items = this.Collection(TodoItem, this.todoItems);
-  itemCount = this.State(async () => this.todoItems.count());
+  items = this.Collection(TodoItem, this.locators.todoItems);
+
+  itemCount = this.State(() => this.items.count());
+  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
+  itemsLeftText = this.State(() => this.locators.itemsLeftCounter.innerText());
 
   @Action
   async goto() {
@@ -214,8 +285,14 @@ class TodoPage extends PageObject {
 
   @Action
   async addTodo(text: string) {
-    await this.newTodoInput.fill(text);
-    await this.newTodoInput.press('Enter');
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
+  }
+
+  @Action
+  async clearCompleted() {
+    await this.locators.clearCompletedButton.click();
+    await this.waitFor(this.completedCount, 0);
   }
 }
 
@@ -227,9 +304,9 @@ test('adds and completes a todo', async ({ page }) => {
 
   const first = await todoPage.items.at(0);
   await expect(first).toBeDefined();
-  await first.toggle();
+  await first!.toggle();
 
-  await expect(todoPage).toHaveState({ itemCount: 1 });
+  await expect(todoPage).toHaveState({ itemCount: 1, completedCount: 1 });
 });
 ```
 

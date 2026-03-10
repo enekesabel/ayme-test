@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { PageFragment } from '../../src/pom-universal/PageFragment';
+import { PageFragment } from '../../src/pom-universal/createAdapter';
 
 class TestFragment extends PageFragment {
   count = this.State(async () => this.counter);
@@ -24,19 +24,19 @@ class TestFragment extends PageFragment {
 
 test.describe('PageFragment methods', () => {
   test('supports async methods', async () => {
-    const fragment = new TestFragment();
+    const fragment = new TestFragment(undefined);
     await expect(fragment.increment()).resolves.toBe(1);
     await expect(fragment.increment()).resolves.toBe(2);
   });
 
   test('passes arguments through async methods', async () => {
-    const fragment = new TestFragment();
+    const fragment = new TestFragment(undefined);
     await expect(fragment.setCount(42)).resolves.toBe(42);
     await expect(fragment.increment()).resolves.toBe(43);
   });
 
   test('exposes waitFor() utility in fragment methods', async () => {
-    const fragment = new TestFragment();
+    const fragment = new TestFragment(undefined);
     setTimeout(() => {
       fragment.setCount(5);
     }, 50);
@@ -44,7 +44,7 @@ test.describe('PageFragment methods', () => {
   });
 
   test('supports Collection() with resolver overload', async () => {
-    const fragment = new TestFragment();
+    const fragment = new TestFragment(undefined);
     await expect(fragment.values.all()).resolves.toEqual([0, 1]);
   });
 });

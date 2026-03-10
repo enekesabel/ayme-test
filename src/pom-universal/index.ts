@@ -1,1 +1,1 @@
-export { PageFragment } from './PageFragment';
+export { PageFragment, createAdapter } from './createAdapter';

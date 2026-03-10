@@ -11,6 +11,7 @@ import type { Collection } from '../../../src/primitives';
  */
 
 class TestItem extends PageComponent {
+  defaultLocators() { return {}; }
   getText = this.State(async () => 'hello');
   getCount = this.State(async () => 42);
   isCompleted = this.State(async () => false);

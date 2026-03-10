@@ -1,15 +1,16 @@
+import type { Locator } from '@playwright/test';
 import { Action, PageObject, PageComponent } from '../../src/playwright/pom';
 
 /**
  * A reusable checkbox component.
  */
 export class Checkbox extends PageComponent {
-  isChecked = this.State(() => this.root.isChecked());
+  isChecked = this.State(() => this.locators.root.isChecked());
 
   @Action
   async toggle() {
     const before = await this.isChecked();
-    await this.root.click();
+    await this.locators.root.click();
     await this.waitFor(this.isChecked, cur => cur === !before);
   }
 
@@ -30,13 +31,13 @@ export class Checkbox extends PageComponent {
  * Input component for adding new TODO items.
  */
 export class NewTodoInput extends PageComponent {
-  getValue = this.State(() => this.root.inputValue());
+  getValue = this.State(() => this.locators.root.inputValue());
   isEmpty = this.State(async () => (await this.getValue()) === '');
 
   @Action
   async addTodo(text: string) {
-    await this.root.fill(text);
-    await this.root.press('Enter');
+    await this.locators.root.fill(text);
+    await this.locators.root.press('Enter');
     await this.waitFor(this.isEmpty, true);
   }
 }
@@ -45,12 +46,16 @@ export class NewTodoInput extends PageComponent {
  * Represents a single TODO item in the list.
  */
 export class TodoItem extends PageComponent {
-  checkbox = new Checkbox(this.root.locator('.toggle'));
-  label = this.root.locator('label');
-  destroyButton = this.root.locator('.destroy');
-  editInput = this.root.locator('.edit');
+  locators = this.Locators({
+    label: this.root.locator('label'),
+    destroyButton: this.root.locator('.destroy'),
+    editInput: this.root.locator('.edit'),
+    checkbox: this.root.locator('.toggle'),
+  });
 
-  getText = this.State(() => this.label.innerText());
+  checkbox = new Checkbox(this.locators.checkbox);
+
+  getText = this.State(() => this.locators.label.innerText());
   isCompleted = this.State(() => this.checkbox.isChecked());
 
   @Action
@@ -73,15 +78,15 @@ export class TodoItem extends PageComponent {
   }
 
   async delete() {
-    await this.root.hover();
-    await this.destroyButton.click();
+    await this.locators.root.hover();
+    await this.locators.destroyButton.click();
   }
 
   @Action
   async edit(newText: string) {
-    await this.label.dblclick();
-    await this.editInput.fill(newText);
-    await this.editInput.press('Enter');
+    await this.locators.label.dblclick();
+    await this.locators.editInput.fill(newText);
+    await this.locators.editInput.press('Enter');
     await this.waitFor(this.getText, newText);
   }
 }
@@ -90,20 +95,26 @@ export class TodoItem extends PageComponent {
  * Represents the TodoMVC page.
  */
 export class TodoPage extends PageObject {
-  newTodoInput = new NewTodoInput(this.page.locator('.new-todo'));
-  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
-  toggleAllCheckbox = new Checkbox(this.page.locator('.toggle-all'));
-  clearCompletedButton = this.page.locator('.clear-completed');
-  itemsLeftCounter = this.page.locator('.todo-count');
-  filterAllLink = this.page.locator('.filters a', { hasText: 'All' });
-  filterActiveLink = this.page.locator('.filters a', { hasText: 'Active' });
-  filterCompletedLink = this.page.locator('.filters a', { hasText: 'Completed' });
+  locators = this.Locators({
+    clearCompletedButton: this.page.locator('.clear-completed'),
+    itemsLeftCounter: this.page.locator('.todo-count'),
+    filterAllLink: this.page.locator('.filters a', { hasText: 'All' }),
+    filterActiveLink: this.page.locator('.filters a', { hasText: 'Active' }),
+    filterCompletedLink: this.page.locator('.filters a', { hasText: 'Completed' }),
+    newTodoInput: this.page.locator('.new-todo'),
+    todoListItems: this.page.locator('.todo-list li'),
+    toggleAll: this.page.locator('.toggle-all'),
+  });
+
+  newTodoInput = new NewTodoInput(this.locators.newTodoInput);
+  items = this.Collection(TodoItem, this.locators.todoListItems);
+  toggleAllCheckbox = new Checkbox(this.locators.toggleAll);
 
   itemCount = this.State(() => this.items.count());
   completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
   activeCount = this.State(() => this.items.filter({ isCompleted: false }).count());
-  itemsLeftText = this.State(() => this.itemsLeftCounter.innerText());
-  isClearCompletedVisible = this.State(() => this.clearCompletedButton.isVisible());
+  itemsLeftText = this.State(() => this.locators.itemsLeftCounter.innerText());
+  isClearCompletedVisible = this.State(() => this.locators.clearCompletedButton.isVisible());
   activeFilter = this.State(async (): Promise<string> => {
     const url = this.page.url();
     if (url.includes('#/active')) return 'active';
@@ -136,26 +147,26 @@ export class TodoPage extends PageObject {
 
   @Action
   async clearCompleted() {
-    await this.clearCompletedButton.click();
+    await this.locators.clearCompletedButton.click();
     await this.waitFor(this.completedCount, 0);
   }
 
   @Action
   async filterAll() {
-    await this.filterAllLink.click();
+    await this.locators.filterAllLink.click();
     await this.waitFor(this.activeFilter, 'all');
   }
 
   @Action
   async filterActive() {
-    await this.filterActiveLink.click();
+    await this.locators.filterActiveLink.click();
     await this.page.waitForURL(/.*#\/active/);
     await this.waitFor(this.activeFilter, 'active');
   }
 
   @Action
   async filterCompleted() {
-    await this.filterCompletedLink.click();
+    await this.locators.filterCompletedLink.click();
     await this.page.waitForURL(/.*#\/completed/);
     await this.waitFor(this.activeFilter, 'completed');
   }

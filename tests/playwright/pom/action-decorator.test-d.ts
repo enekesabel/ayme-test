@@ -1,6 +1,7 @@
 import { Action, PageObject } from '../../../src/playwright/pom';
 
 class TodoPage extends PageObject {
+  defaultLocators() { return {}; }
   constructor(page: any) {
     super(page);
   }
