@@ -15,6 +15,18 @@ import type { WaitForOptions } from '../primitives/wait';
 export type ActionFunction<Args extends unknown[], R> = PrimitiveActionFunction<Args, R>;
 export type ActionWithEffects<Args extends unknown[], R> = PrimitiveActionWithEffects<Args, R>;
 
+function bindActionToInstance<This, Args extends unknown[], R>(
+  instance: This,
+  fn: (this: This, ...args: Args) => Promise<R>,
+): (...args: Args) => Promise<R> {
+  const bound = (...args: Args) => fn.apply(instance, args);
+  Object.defineProperty(bound, 'toString', {
+    value: () => fn.toString(),
+    configurable: true,
+  });
+  return bound;
+}
+
 /**
  * Framework-independent base class for all page fragments.
  * Provides State, Collection, waitFor, and Locators factories.
@@ -63,7 +75,8 @@ export abstract class PageFragment<L = unknown> {
   protected Action<Args extends unknown[], R>(
     fn: (...args: Args) => Promise<R>,
   ): ActionFunction<Args, R> {
-    const action = primitiveAction((...args: Args) => fn.apply(this, args));
+    const action = primitiveAction(bindActionToInstance(this, fn));
+    const wrapperWithEffects = (() => wrapper as unknown as ActionWithEffects<Args, R>);
 
     const wrapper = ((...args: Args): Promise<R> => {
       this.ensureActionNamed(action, wrapper);
@@ -75,12 +88,22 @@ export abstract class PageFragment<L = unknown> {
       second?: unknown,
     ): ActionWithEffects<Args, R> => {
       (action.effect as (first: unknown, second?: unknown) => PrimitiveActionWithEffects<Args, R>)(first, second);
-      return wrapper as unknown as ActionWithEffects<Args, R>;
+      return wrapperWithEffects();
     }) as ActionFunction<Args, R>['effect'];
+    wrapperWithEffects().and = ((
+      first: unknown,
+      second?: unknown,
+    ): ActionWithEffects<Args, R> => {
+      ((action as unknown as PrimitiveActionWithEffects<Args, R>).and as (
+        first: unknown,
+        second?: unknown,
+      ) => PrimitiveActionWithEffects<Args, R>)(first, second);
+      return wrapperWithEffects();
+    }) as ActionWithEffects<Args, R>['and'];
 
-    (wrapper as unknown as ActionWithEffects<Args, R>).options = (opts: WaitForOptions): ActionWithEffects<Args, R> => {
+    wrapperWithEffects().options = (opts: WaitForOptions): ActionWithEffects<Args, R> => {
       (action as unknown as PrimitiveActionWithEffects<Args, R>).options(opts);
-      return wrapper as unknown as ActionWithEffects<Args, R>;
+      return wrapperWithEffects();
     };
 
     wrapper.named = (name: string): ActionFunction<Args, R> => {

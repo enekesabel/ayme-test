@@ -23,8 +23,13 @@ export type { WaitForOptions, WaitForStateOptions } from './wait';
 export { Collection } from './collection';
 
 // Errors
-export { ActionEffectError, StateTimeoutError } from './errors';
-export type { StateMismatch } from './errors';
+export {
+  ActionEffectError,
+  StateExpectationError,
+  StateExpectationStabilityError,
+  StateExpectationTimeoutError,
+} from './errors';
+export type { StateExpectationMismatch } from './errors';
 
 // Types
 export type { FilterExpectations } from './types';

@@ -42,11 +42,11 @@ test.describe('State()', () => {
     await promise;
   });
 
-  test('.waitFor() throws StateTimeoutError on timeout', async () => {
+  test('.waitFor() throws StateExpectationTimeoutError on timeout', async () => {
     const count = State(async () => 0);
 
-    const { StateTimeoutError } = await import('../../src/primitives/errors');
-    await expect(count.waitFor(99, { timeout: 200 })).rejects.toBeInstanceOf(StateTimeoutError);
+    const { StateExpectationTimeoutError } = await import('../../src/primitives/errors');
+    await expect(count.waitFor(99, { timeout: 200 })).rejects.toBeInstanceOf(StateExpectationTimeoutError);
   });
 });
 

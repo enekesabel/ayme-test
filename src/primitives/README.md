@@ -358,7 +358,7 @@ Thrown when effects are not satisfied within the timeout after the action comple
 | `args` | The arguments passed to the action. |
 | `timeout` | The timeout value used for effect polling (ms). |
 | `details` | Detailed breakdown of which effects failed. |
-| `cause` | The underlying `StateTimeoutError` or error. |
+| `cause` | The underlying `StateExpectationTimeoutError`, `StateExpectationStabilityError`, or original error. |
 
 ```
 ActionEffectError: Action "addTodo(text: "")" effects not met within 5000ms:
@@ -415,7 +415,7 @@ Also supports sleep:
 await waitFor(250);
 ```
 
-### `StateTimeoutError`
+### `StateExpectationTimeoutError`
 
 Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations are not met within the timeout.
 
@@ -423,29 +423,40 @@ Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations are not met 
 |---|---|
 | `message` | Human-readable summary of all failing expectations. |
 | `timeout` | The timeout value used for the wait (ms). |
-| `mismatches` | Array of `StateMismatch` — one entry per failing expectation. |
+| `mismatches` | Array of `StateExpectationMismatch` — one entry per failing expectation. |
 
-**`StateMismatch`**
+**`StateExpectationMismatch`**
 
 | | |
 |---|---|
-| `stateName?` | Display name from `.named(...)` or `States({...})`, if set. |
+| `label?` | Display name for the failing expectation, if available. |
 | `expected` | The expected value or predicate. |
-| `actual` | The last observed value. |
+| `current` | The last observed value. |
+| `previous?` | The captured previous value when the expectation depends on it. |
 | `isPredicate` | `true` when `expected` is a function. |
 
 **Example error messages**
 
 ```
-StateTimeoutError: State expectations not met within 5000ms:
+StateExpectationTimeoutError: State expectations not met within 5000ms:
   - itemCount: expected 3, got 1
 ```
 
 ```
-StateTimeoutError: State expectations not met within 5000ms:
+StateExpectationTimeoutError: State expectations not met within 5000ms:
   - itemCount: expected 3, got 1
-  - isReady: predicate failed (actual: false)
+  - isReady: predicate failed (current: false)
 ```
+
+### `StateExpectationStabilityError`
+
+Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations become true but do not remain true for the configured `stableFor` period within the timeout.
+
+| | |
+|---|---|
+| `message` | Human-readable summary of the unmet stability requirement. |
+| `stableFor` | Required stability duration in ms. |
+| `timeout` | The timeout value used for the wait (ms). |
 
 ---
 
@@ -517,7 +528,9 @@ Each `for await...of` run resolves one snapshot of the current matching items. I
 - `Action(fn)`
 - `Collection<T>`
 - `waitFor(...)`
-- `StateTimeoutError`
+- `StateExpectationError`
+- `StateExpectationTimeoutError`
+- `StateExpectationStabilityError`
 - `ActionEffectError`
 
 **Types**
@@ -533,7 +546,7 @@ Each `for await...of` run resolves one snapshot of the current matching items. I
 - `StateDeps`
 - `WaitForOptions`
 - `WaitForStateOptions`
-- `StateMismatch`
+- `StateExpectationMismatch`
 - `FilterExpectations<T>`
 
 ---

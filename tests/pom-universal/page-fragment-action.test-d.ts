@@ -8,7 +8,9 @@ class TestFragment extends PageFragment {
   increment = this.Action(async () => {
     this.countValue += 1;
     return this.countValue;
-  }).effect(this.count, (current, previous) => current === previous + 1);
+  })
+    .effect(this.count, (current, previous) => current === previous + 1)
+    .and(this.count, (current: number) => current > 0);
 
   setCount = this.Action(async (value: number) => {
     this.countValue = value;

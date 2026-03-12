@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ActionEffectError } from '../../src/primitives/errors';
 import { PageFragment } from '../../src/pom-universal/createAdapter';
 
 class TestFragment extends PageFragment {
@@ -57,6 +58,15 @@ test.describe('PageFragment methods', () => {
     await expect(fragment.increment()).resolves.toBe(43);
   });
 
+  test('preserves original parameter names in action metadata', async () => {
+    const fragment = new TestFragment(undefined);
+
+    expect(fragment.setCount.meta()).toEqual({
+      name: 'TestFragment.setCount',
+      params: ['value'],
+    });
+  });
+
   test('exposes waitFor() utility in fragment methods', async () => {
     const fragment = new TestFragment(undefined);
     setTimeout(() => {
@@ -77,5 +87,27 @@ test.describe('PageFragment methods', () => {
     await expect(customized).not.toBe(fragment);
     await expect(customized.locators.label.id).toBe('custom-label');
     await expect(fragment.locators.label.id).toBe('label');
+  });
+
+  test('formats action effect errors with original parameter names', async () => {
+    class EffectFailureFragment extends TestFragment {
+      impossibleSetCount = this.Action(async (value: number) => {
+        await this.setCount(value);
+        return value;
+      })
+        .effect(this.count, (count: number) => count > 10)
+        .options({ timeout: 200 });
+    }
+
+    const fragment = new EffectFailureFragment();
+
+    try {
+      await fragment.impossibleSetCount(5);
+      throw new Error('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ActionEffectError);
+      expect((error as ActionEffectError).actionCall).toBe('EffectFailureFragment.impossibleSetCount(value: 5)');
+      expect((error as ActionEffectError).message).toContain('EffectFailureFragment.impossibleSetCount(value: 5)');
+    }
   });
 });
