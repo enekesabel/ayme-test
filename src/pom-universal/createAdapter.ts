@@ -17,14 +17,12 @@ export abstract class PageFragment<L = unknown> {
   locators!: Record<string, L>;
 
   protected _overrides?: Record<string, L>;
-  private _cloneArgs?: unknown[];
 
   constructor(locatorOverrides: Record<string, L> | undefined) {
-    if (locatorOverrides) {
-      if (Object.keys(locatorOverrides).length === 0) {
-        throw new Error('Locator overrides must contain at least one locator');
-      }
-      this._overrides = locatorOverrides;
+    const pendingOverrides = consumePendingLocatorOverrides<L>(new.target);
+    const resolvedOverrides = mergeLocatorOverrides(locatorOverrides, pendingOverrides);
+    if (resolvedOverrides) {
+      this._overrides = resolvedOverrides;
     }
   }
 
@@ -61,23 +59,18 @@ export abstract class PageFragment<L = unknown> {
   }
 
   WithLocators<T extends this>(this: T, overrides: LocatorOverrides<T>): T {
-    return this._cloneWithLocators(
-      mergeLocatorOverrides(this._overrides, overrides as Record<string, L> | undefined),
-    ) as T;
+    const mergedOverrides = mergeLocatorOverrides(
+      this._overrides,
+      overrides as Record<string, L> | undefined,
+    );
+    return withPendingLocatorOverrides(
+      this.constructor as Function,
+      mergedOverrides,
+      () => this.clone() as T,
+    );
   }
 
-  protected _storeCloneArgs(args: unknown[]): void {
-    this._cloneArgs = args;
-  }
-
-  protected _cloneWithLocators(overrides: Record<string, L> | undefined): this {
-    if (!this._cloneArgs) {
-      throw new Error('WithLocators() is only supported on adapter-generated PageFragment instances');
-    }
-
-    const Ctor = this.constructor as new (...args: unknown[]) => this;
-    return instantiateWithLocatorOverrides(Ctor, this._cloneArgs, overrides);
-  }
+  protected abstract clone(): this;
 }
 
 // ─── Adapter factory ──────────────────────────────────────────────
@@ -95,15 +88,28 @@ type LocatorOverrides<T extends PageFragment<any>> = AtLeastOne<Omit<T['locators
 
 const pendingLocatorOverrides = new WeakMap<Function, Array<Record<string, unknown>>>();
 
+function validateLocatorOverrides<L>(
+  overrides: Record<string, L> | undefined,
+): Record<string, L> | undefined {
+  if (overrides && Object.keys(overrides).length === 0) {
+    throw new Error('Locator overrides must contain at least one locator');
+  }
+  return overrides;
+}
+
 function mergeLocatorOverrides<L>(
   existing: Record<string, L> | undefined,
   incoming: Record<string, L> | undefined,
 ): Record<string, L> | undefined {
   const merged = { ...existing, ...incoming };
-  return Object.keys(merged).length > 0 ? merged : undefined;
+  return validateLocatorOverrides(
+    Object.keys(merged).length > 0 ? merged : undefined,
+  );
 }
 
-function consumePendingLocatorOverrides<L>(ctor: Function): Record<string, L> | undefined {
+function consumePendingLocatorOverrides<L>(ctor: Function | undefined): Record<string, L> | undefined {
+  if (!ctor) return undefined;
+
   const stack = pendingLocatorOverrides.get(ctor);
   const overrides = stack?.pop() as Record<string, L> | undefined;
 
@@ -111,26 +117,26 @@ function consumePendingLocatorOverrides<L>(ctor: Function): Record<string, L> | 
     pendingLocatorOverrides.delete(ctor);
   }
 
-  return overrides;
+  return validateLocatorOverrides(overrides);
 }
 
-function instantiateWithLocatorOverrides<T>(
-  Ctor: new (...args: unknown[]) => T,
-  args: unknown[],
+function withPendingLocatorOverrides<T>(
+  ctor: Function,
   overrides: Record<string, unknown> | undefined,
+  clone: () => T,
 ): T {
   if (!overrides) {
-    return new Ctor(...args);
+    return clone();
   }
 
-  const stack = pendingLocatorOverrides.get(Ctor) ?? [];
+  const stack = pendingLocatorOverrides.get(ctor) ?? [];
   stack.push(overrides);
-  pendingLocatorOverrides.set(Ctor, stack);
+  pendingLocatorOverrides.set(ctor, stack);
 
   try {
-    return new Ctor(...args);
+    return clone();
   } finally {
-    const currentStack = pendingLocatorOverrides.get(Ctor);
+    const currentStack = pendingLocatorOverrides.get(ctor);
     if (currentStack) {
       const pendingIndex = currentStack.lastIndexOf(overrides);
       if (pendingIndex !== -1) {
@@ -138,7 +144,7 @@ function instantiateWithLocatorOverrides<T>(
       }
 
       if (currentStack.length === 0) {
-        pendingLocatorOverrides.delete(Ctor);
+        pendingLocatorOverrides.delete(ctor);
       }
     }
   }
@@ -150,6 +156,8 @@ function instantiateWithLocatorOverrides<T>(
  * `Locators()` override that auto-includes root.
  * Required as a named class for DTS emission (TS4094).
  */
+// Required for DTS emission (TS4094); the interface augments the generated class shape.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export abstract class PageComponentBase<L = unknown> extends PageFragment<L> {
   protected root!: L;
 
@@ -159,6 +167,7 @@ export abstract class PageComponentBase<L = unknown> extends PageFragment<L> {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface PageComponentBase<L = unknown> {
   locators: { root: L };
 }
@@ -183,9 +192,7 @@ export function createAdapter<
 
   abstract class GeneratedPageObject extends (Fragment as abstract new (...args: unknown[]) => PageFragment<L>) {
     constructor(...fragmentArgs: FragmentArgs) {
-      const pendingOverrides = consumePendingLocatorOverrides<L>(new.target);
-      super(pendingOverrides, ...fragmentArgs);
-      this._storeCloneArgs(fragmentArgs);
+      super(undefined, ...fragmentArgs);
     }
   }
 
@@ -198,11 +205,9 @@ export function createAdapter<
     }
 
     constructor(root: L, ...fragmentArgs: FragmentArgs) {
-      const pendingOverrides = consumePendingLocatorOverrides<L>(new.target);
-      super(pendingOverrides, ...fragmentArgs);
+      super(undefined, ...fragmentArgs);
       this.root = root;
       this.locators = this.Locators({} as Record<string, L>);
-      this._storeCloneArgs([root, ...fragmentArgs]);
     }
   }
 

@@ -15,6 +15,14 @@ abstract class PlaywrightPageFragment extends GenericPageFragment<Locator> {
     super(locatorOverrides);
   }
 
+  protected override clone(): this {
+    const Ctor = this.constructor as new (arg: Locator | Page) => this;
+    if ('root' in this) {
+      return new Ctor((this as { root: Locator }).root);
+    }
+    return new Ctor(this.page);
+  }
+
   private async resolveAll<T>(
     Cls: ComponentConstructor<T>,
     locator: Locator

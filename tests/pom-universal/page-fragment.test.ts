@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test';
 import { PageFragment } from '../../src/pom-universal/createAdapter';
 
 class TestFragment extends PageFragment {
+  constructor(locatorOverrides?: Record<string, unknown>) {
+    super(locatorOverrides);
+  }
+
   count = this.State(async () => this.counter);
   values = this.Collection(async () => [this.counter, this.counter + 1]);
 
@@ -19,6 +23,24 @@ class TestFragment extends PageFragment {
 
   async waitUntilCount(value: number) {
     await this.waitFor(this.count, value, { timeout: 1000 });
+  }
+
+  protected override clone(): this {
+    return new TestFragment() as this;
+  }
+}
+
+class LocatorFragment extends PageFragment<{ id: string }> {
+  constructor(locatorOverrides?: Record<string, { id: string }>) {
+    super(locatorOverrides);
+  }
+
+  locators = this.Locators({
+    label: { id: 'label' },
+  });
+
+  protected override clone(): this {
+    return new LocatorFragment() as this;
   }
 }
 
@@ -46,5 +68,14 @@ test.describe('PageFragment methods', () => {
   test('supports Collection() with resolver overload', async () => {
     const fragment = new TestFragment(undefined);
     await expect(fragment.values.all()).resolves.toEqual([0, 1]);
+  });
+
+  test('supports WithLocators() when clone() is implemented', async () => {
+    const fragment = new LocatorFragment();
+    const customized = fragment.WithLocators({ label: { id: 'custom-label' } });
+
+    await expect(customized).not.toBe(fragment);
+    await expect(customized.locators.label.id).toBe('custom-label');
+    await expect(fragment.locators.label.id).toBe('label');
   });
 });

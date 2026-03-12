@@ -31,6 +31,7 @@ abstract class PageFragment<L = unknown> {
   constructor(locatorOverrides: Record<string, L> | undefined)
 
   protected Locators<T extends Record<string, L>>(bag: T): T
+  protected clone(): this
   protected State<R>(fn: () => Promise<R>): StateFunction<R>
   protected Collection<T>(resolver: () => Promise<T[]>): Collection<T>
   protected waitFor: typeof waitFor
@@ -83,8 +84,6 @@ class Widget extends PageComponent {
 
 Locators defined via `this.Locators()` are defaults. They can be **overridden immutably** via `WithLocators()`, enabling a test-component-harness approach — the component declares how it normally finds its elements, but a test can derive a customized instance when the context requires it.
 
-The override logic lives in `PageFragment` — `WithLocators()` returns a new instance whose `this.Locators()` bag is merged with the provided overrides:
-
 ```typescript
 class SearchBox extends PageComponent {
   locators = this.Locators({
@@ -107,6 +106,10 @@ search.locators.submitButton;  // → still the default
 ```
 
 Only the keys you provide are overridden; the rest keep their defaults. `WithLocators()` never mutates the original instance — it returns a new one with the customized locator bag.
+
+If you are building an adapter with `createAdapter(...)`, implement `clone()` on the fragment class you pass in. `WithLocators()` relies on that hook to recreate the fragment with the same public constructor shape your adapter exposes.
+
+Keep `PageObject` and `PageComponent` constructors aligned with what `clone()` can reconstruct.
 
 ### Protected factories
 
@@ -180,6 +183,14 @@ abstract class HarmonizedFragment extends PageFragment<HarmonizedLocator> {
       Object.entries(base).map(([key, loc]) => [key, harmonize(loc)]),
     ) as T;
   }
+
+  protected override clone(): this {
+    const Ctor = this.constructor as new (root?: HarmonizedLocator) => this;
+    if ('root' in this) {
+      return new Ctor((this as { root: HarmonizedLocator }).root);
+    }
+    return new Ctor();
+  }
 }
 
 const { PageObject, PageComponent } = createAdapter(HarmonizedFragment);
@@ -213,6 +224,8 @@ abstract class PageComponent extends BasePageComponent {
   constructor(root: Locator) { ... }
 }
 ```
+
+The fragment you pass to `createAdapter(...)` owns cloning for the generated hierarchy.
 
 ---
 
