@@ -12,7 +12,15 @@ declare function mockLocator(sel: string): MockLocator;
 // Minimal adapter — NO locators override, NO extra plumbing
 // ═══════════════════════════════════════════════════════════════════
 
-abstract class MockFragment extends PageFragment<MockLocator> {}
+abstract class MockFragment extends PageFragment<MockLocator> {
+  protected override clone(): this {
+    const Ctor = this.constructor as new (root?: MockLocator) => this;
+    if ('root' in this) {
+      return new Ctor((this as { root: MockLocator }).root);
+    }
+    return new Ctor();
+  }
+}
 
 const { PageObject, PageComponent } = createAdapter(MockFragment);
 

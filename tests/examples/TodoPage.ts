@@ -1,4 +1,3 @@
-import type { Locator } from '@playwright/test';
 import { Action, PageObject, PageComponent } from '../../src/playwright/pom';
 
 /**

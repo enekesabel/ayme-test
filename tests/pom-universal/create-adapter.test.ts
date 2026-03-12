@@ -17,7 +17,15 @@ function locator(id: string): RootfulLocator {
   };
 }
 
-abstract class TestFragment extends PageFragment<RootfulLocator> {}
+abstract class TestFragment extends PageFragment<RootfulLocator> {
+  protected override clone(): this {
+    const Ctor = this.constructor as new (root?: RootfulLocator) => this;
+    if ('root' in this) {
+      return new Ctor((this as { root: RootfulLocator }).root);
+    }
+    return new Ctor();
+  }
+}
 
 const { PageObject, PageComponent } = createAdapter(TestFragment);
 
