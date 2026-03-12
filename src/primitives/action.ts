@@ -1,9 +1,8 @@
-import { ActionEffectError, StateTimeoutError, type StateMismatch } from './errors';
+import { ActionEffectError, type StateExpectationMismatch } from './errors';
 import { extractParamNames, formatValue } from './format';
-import { poll } from './poll';
 import type { StateFunction } from './state';
 import { StateBrandSymbol, StateNameSymbol } from './state';
-import type { WaitForOptions } from './wait';
+import { createStateExpectation, pollExpectations, type WaitForOptions } from './wait';
 
 export interface ActionMeta {
   readonly name?: string;
@@ -54,6 +53,7 @@ export interface ActionEffectBuilder {
     predicate: GroupEffectPredicate<D>,
   ): ActionEffectBuilder;
   effect: ActionEffectBuilder;
+  and: ActionEffectBuilder;
 }
 
 export type ActionWithEffects<Args extends unknown[], R> = ((...args: Args) => Promise<R>) & {
@@ -66,6 +66,17 @@ export type ActionWithEffects<Args extends unknown[], R> = ((...args: Args) => P
     predicate: GroupEffectPredicate<D>,
   ): ActionWithEffects<Args, R>;
   effect(
+    build: DeferredEffects<Args>,
+  ): ActionWithEffects<Args, R>;
+  and<T>(
+    state: StateFunction<T>,
+    expected: EffectValue<T>,
+  ): ActionWithEffects<Args, R>;
+  and<D extends StateDeps>(
+    states: D,
+    predicate: GroupEffectPredicate<D>,
+  ): ActionWithEffects<Args, R>;
+  and(
     build: DeferredEffects<Args>,
   ): ActionWithEffects<Args, R>;
   options(opts: WaitForOptions): ActionWithEffects<Args, R>;
@@ -89,22 +100,6 @@ export type ActionFunction<Args extends unknown[], R> = ((...args: Args) => Prom
   meta(): ActionMeta;
 };
 
-interface GroupEffectMismatch {
-  readonly stateNames: string[];
-  readonly current: Record<string, unknown>;
-  readonly previous: Record<string, unknown>;
-}
-
-class PendingActionEffectsError extends Error {
-  constructor(
-    readonly stateMismatches: readonly StateMismatch[],
-    readonly groupMismatches: readonly GroupEffectMismatch[],
-    readonly timeout: number,
-  ) {
-    super(formatEffectFailures(stateMismatches, groupMismatches));
-  }
-}
-
 export function Action<Args extends unknown[], R>(
   fn: (...args: Args) => Promise<R>,
 ): ActionFunction<Args, R> {
@@ -123,49 +118,19 @@ export function Action<Args extends unknown[], R>(
     const snapshots = await captureSnapshots(resolvedEffects);
     const result = await fn(...args);
     const timeout = effectOpts.timeout ?? 5000;
-    const stableFor = effectOpts.stableFor ?? 0;
-    let stableSince: number | null = null;
+    const expectations = resolvedEffects.map((effect, index) =>
+      createEffectExpectation(effect, snapshots[index]!));
 
     try {
-      await poll(async () => {
-        const stateMismatches: StateMismatch[] = [];
-        const groupMismatches: GroupEffectMismatch[] = [];
-
-        for (let i = 0; i < resolvedEffects.length; i++) {
-          const effect = resolvedEffects[i]!;
-          const snapshot = snapshots[i]!;
-
-          if (effect.kind === 'state') {
-            const mismatch = await evaluateStateEffect(effect, snapshot);
-            if (mismatch) stateMismatches.push(mismatch);
-            continue;
-          }
-
-          const mismatch = await evaluateGroupEffect(effect, snapshot);
-          if (mismatch) groupMismatches.push(mismatch);
-        }
-
-        if (stateMismatches.length > 0 || groupMismatches.length > 0) {
-          stableSince = null;
-          throw new PendingActionEffectsError(stateMismatches, groupMismatches, timeout);
-        }
-
-        if (stableFor > 0) {
-          const now = Date.now();
-          if (stableSince === null) stableSince = now;
-          if (now - stableSince < stableFor) {
-            throw new PendingActionEffectsError([], [], timeout);
-          }
-        }
-      }, { timeout });
+      await pollExpectations(expectations, effectOpts);
     } catch (error) {
-      if (error instanceof PendingActionEffectsError) {
+      if (error instanceof Error) {
         throw new ActionEffectError(
           formatActionCall(actionName ?? fn.name ?? 'unnamed action', params, args),
           args,
           timeout,
           error.message,
-          buildActionEffectCause(error),
+          error,
         );
       }
       throw error;
@@ -186,6 +151,7 @@ export function Action<Args extends unknown[], R>(
     appendEffect(staticEffects, first as StateFunction<unknown> | StateDeps, second);
     return wrapper as unknown as ActionWithEffects<Args, R>;
   }) as ActionFunction<Args, R>['effect'];
+  (wrapper as unknown as ActionWithEffects<Args, R>).and = wrapper.effect;
 
   (wrapper as unknown as ActionWithEffects<Args, R>).options = (opts: WaitForOptions): ActionWithEffects<Args, R> => {
     effectOpts = opts;
@@ -232,6 +198,7 @@ function createEffectBuilder(
   }) as ActionEffectBuilder;
 
   builder.effect = builder;
+  builder.and = builder;
 
   return builder;
 }
@@ -278,83 +245,77 @@ async function captureSnapshots(
   return snapshots;
 }
 
-async function evaluateStateEffect(
+function createEffectExpectation(
+  effect: EffectDefinition,
+  previous: unknown,
+): { label?: string; evaluate: () => Promise<StateExpectationMismatch | undefined> } {
+  if (effect.kind === 'state') {
+    return createStateExpectationWithPrevious(effect, previous);
+  }
+  return createGroupExpectation(effect, previous);
+}
+
+function createStateExpectationWithPrevious(
   effect: StateEffectDefinition<unknown>,
   previous: unknown,
-): Promise<StateMismatch | undefined> {
-  const actual = await effect.state();
-  const isPredicate = typeof effect.expected === 'function';
-  const matches = isPredicate
-    ? (effect.expected as (current: unknown, prev: unknown) => boolean)(actual, previous)
-    : actual === effect.expected;
-
-  if (matches) return undefined;
+): { label?: string; evaluate: () => Promise<StateExpectationMismatch | undefined> } {
+  if (typeof effect.expected !== 'function' || effect.expected.length < 2) {
+    return createStateExpectation(
+      effect.state,
+      effect.expected as unknown,
+    );
+  }
 
   return {
-    state: effect.state,
-    stateName: effect.state[StateNameSymbol],
-    expected: effect.expected,
-    actual,
-    isPredicate,
+    label: effect.state[StateNameSymbol],
+    evaluate: async () => {
+      const current = await effect.state();
+      const isPredicate = true;
+      const matches = (effect.expected as (current: unknown, prev: unknown) => boolean)(current, previous);
+
+      if (matches) return undefined;
+
+      return {
+        state: effect.state,
+        label: effect.state[StateNameSymbol],
+        expected: effect.expected,
+        current,
+        previous,
+        isPredicate,
+      };
+    },
   };
 }
 
-async function evaluateGroupEffect(
+function createGroupExpectation(
   effect: GroupEffectDefinition<StateDeps>,
   previous: unknown,
-): Promise<GroupEffectMismatch | undefined> {
-  const current: Record<string, unknown> = {};
-
-  for (const [key, state] of Object.entries(effect.states)) {
-    current[key] = await state();
-  }
-
-  const matches = (effect.predicate as (
-    current: Record<string, unknown>,
-    prev: Record<string, unknown>,
-  ) => boolean)(current, previous as Record<string, unknown>);
-
-  if (matches) return undefined;
-
+): { label: string; evaluate: () => Promise<StateExpectationMismatch | undefined> } {
   return {
-    stateNames: Object.keys(effect.states),
-    current,
-    previous: previous as Record<string, unknown>,
+    label: `[${Object.keys(effect.states).join(', ')}]`,
+    evaluate: async () => {
+      const current: Record<string, unknown> = {};
+
+      for (const [key, state] of Object.entries(effect.states)) {
+        current[key] = await state();
+      }
+
+      const matches = (effect.predicate as (
+        current: Record<string, unknown>,
+        prev: Record<string, unknown>,
+      ) => boolean)(current, previous as Record<string, unknown>);
+
+      if (matches) return undefined;
+
+      return {
+        label: `[${Object.keys(effect.states).join(', ')}]`,
+        expected: effect.predicate,
+        current,
+        previous,
+        isPredicate: true,
+      };
+    },
   };
-}
-
-function formatEffectFailures(
-  stateMismatches: readonly StateMismatch[],
-  groupMismatches: readonly GroupEffectMismatch[],
-): string {
-  const lines: string[] = [];
-
-  for (const mismatch of stateMismatches) {
-    const label = mismatch.stateName ?? 'unnamed';
-    if (mismatch.isPredicate) {
-      lines.push(`  - ${label}: predicate failed (actual: ${formatValue(mismatch.actual)})`);
-      continue;
-    }
-    lines.push(`  - ${label}: expected ${formatValue(mismatch.expected)}, got ${formatValue(mismatch.actual)}`);
-  }
-
-  for (const mismatch of groupMismatches) {
-    const labels = mismatch.stateNames.join(', ');
-    lines.push(`  - [${labels}]: cross-state predicate failed`);
-    lines.push(`    previous: ${formatValue(mismatch.previous, 200)}`);
-    lines.push(`    current: ${formatValue(mismatch.current, 200)}`);
-  }
-
-  return lines.join('\n');
-}
-
-function buildActionEffectCause(
-  error: PendingActionEffectsError,
-): Error {
-  if (error.groupMismatches.length === 0) {
-    return new StateTimeoutError([...error.stateMismatches], error.timeout);
-  }
-  return new Error(error.message);
 }
 
 function formatActionCall(

@@ -14,7 +14,7 @@ const rename = Action(async (newText: string) => {
   void newText;
 })
   .effect((effect, newText) => effect(text, newText)
-    .effect(isEditing, false));
+    .and(isEditing, false));
 
 const addMany = Action(async (count: number) => {
   void count;
@@ -45,11 +45,15 @@ const withStableFor: ActionWithEffects<[], void> = Action(async () => {})
   .effect(isEditing, true)
   .options({ timeout: 1000, stableFor: 200 });
 
-// .options() is chainable with further .effect() and .options()
+// .options() is chainable with further .and() and .options()
 const chainedEffectsAndOptions: ActionWithEffects<[], void> = Action(async () => {})
   .effect(isEditing, true)
-  .effect(text, 'done')
+  .and(text, 'done')
   .options({ timeout: 500 });
+
+const chainedAnd: ActionWithEffects<[], void> = Action(async () => {})
+  .effect(isEditing, true)
+  .and(text, 'done');
 
 // .options() followed by another .options() overrides
 const overriddenOptions: ActionWithEffects<[], void> = Action(async () => {})

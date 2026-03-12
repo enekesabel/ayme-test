@@ -1,7 +1,38 @@
 import { test, expect } from '@playwright/test';
 import { State } from '../../src/primitives/state';
 import { waitFor } from '../../src/primitives/wait';
-import { StateTimeoutError } from '../../src/primitives/errors';
+import {
+  StateExpectationStabilityError,
+  StateExpectationTimeoutError,
+} from '../../src/primitives/errors';
+
+function serializeExpectationError(error: StateExpectationTimeoutError | StateExpectationStabilityError) {
+  if (error instanceof StateExpectationTimeoutError) {
+    return {
+      name: error.name,
+      message: error.message,
+      timeout: error.timeout,
+      mismatches: error.mismatches.map(mismatch => ({
+        label: mismatch.label,
+        expected: typeof mismatch.expected === 'function' ? '[Function]' : mismatch.expected,
+        current: mismatch.current,
+        previous: mismatch.previous,
+        isPredicate: mismatch.isPredicate,
+      })),
+    };
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    timeout: error.timeout,
+    stableFor: error.stableFor,
+  };
+}
+
+function stringifySnapshot(value: unknown): string {
+  return JSON.stringify(value, null, 2);
+}
 
 test.describe('waitFor()', () => {
   test('resolves immediately when state already matches', async () => {
@@ -50,7 +81,7 @@ test.describe('waitFor()', () => {
     await promise;
   });
 
-  test('throws StateTimeoutError with mismatches on timeout', async () => {
+  test('throws StateExpectationTimeoutError with mismatches on timeout', async () => {
     const count = State(async () => 0).named('itemCount');
     const active = State(async () => false).named('isActive');
 
@@ -61,16 +92,52 @@ test.describe('waitFor()', () => {
       ], { timeout: 200 });
       throw new Error('Should have thrown');
     } catch (e) {
-      expect(e).toBeInstanceOf(StateTimeoutError);
-      const err = e as StateTimeoutError;
+      expect(e).toBeInstanceOf(StateExpectationTimeoutError);
+      const err = e as StateExpectationTimeoutError;
       expect(err.timeout).toBe(200);
       expect(err.mismatches.length).toBeGreaterThan(0);
 
-      const countMismatch = err.mismatches.find(m => m.stateName === 'itemCount');
+      const countMismatch = err.mismatches.find(m => m.label === 'itemCount');
       expect(countMismatch).toBeTruthy();
       expect(countMismatch!.expected).toBe(5);
-      expect(countMismatch!.actual).toBe(0);
+      expect(countMismatch!.current).toBe(0);
       expect(countMismatch!.isPredicate).toBe(false);
+    }
+  });
+
+  test('formats StateExpectationTimeoutError consistently', async () => {
+    const count = State(async () => 0).named('itemCount');
+    const active = State(async () => false).named('isActive');
+
+    try {
+      await waitFor([
+        [count, 5],
+        [active, true],
+      ], { timeout: 200 });
+      throw new Error('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StateExpectationTimeoutError);
+      expect(
+        stringifySnapshot(serializeExpectationError(error as StateExpectationTimeoutError)),
+      ).toBe(`{
+  "name": "StateExpectationTimeoutError",
+  "message": "State expectations not met within 200ms:\\n  - itemCount: expected 5, got 0\\n  - isActive: expected true, got false",
+  "timeout": 200,
+  "mismatches": [
+    {
+      "label": "itemCount",
+      "expected": 5,
+      "current": 0,
+      "isPredicate": false
+    },
+    {
+      "label": "isActive",
+      "expected": true,
+      "current": false,
+      "isPredicate": false
+    }
+  ]
+}`);
     }
   });
 
@@ -90,6 +157,41 @@ test.describe('waitFor()', () => {
 
     const elapsed = Date.now() - start;
     expect(elapsed).toBeGreaterThanOrEqual(150); // stableFor period (with some tolerance)
+  });
+
+  test('stableFor throws StateExpectationStabilityError when value flickers', async () => {
+    let callCount = 0;
+    const count = State(async () => {
+      callCount++;
+      return callCount % 3 !== 0 ? 5 : 4;
+    });
+
+    await expect(
+      waitFor([[count, 5]], { timeout: 500, stableFor: 200 }),
+    ).rejects.toBeInstanceOf(StateExpectationStabilityError);
+  });
+
+  test('formats StateExpectationStabilityError consistently', async () => {
+    let callCount = 0;
+    const count = State(async () => {
+      callCount++;
+      return callCount % 3 !== 0 ? 5 : 4;
+    });
+
+    try {
+      await waitFor([[count, 5]], { timeout: 500, stableFor: 200 });
+      throw new Error('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StateExpectationStabilityError);
+      expect(
+        stringifySnapshot(serializeExpectationError(error as StateExpectationStabilityError)),
+      ).toBe(`{
+  "name": "StateExpectationStabilityError",
+  "message": "State expectations did not remain stable for 200ms within 500ms",
+  "timeout": 500,
+  "stableFor": 200
+}`);
+    }
   });
 
   test('direct form: waitFor(state, value)', async () => {
