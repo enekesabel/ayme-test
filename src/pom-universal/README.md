@@ -81,9 +81,9 @@ class Widget extends PageComponent {
 
 #### Override mechanism
 
-Locators defined via `this.Locators()` are defaults. They can be **overridden at instantiation time** via the constructor, enabling a test-component-harness approach — the component declares how it normally finds its elements, but a test can swap individual locators when the context requires it.
+Locators defined via `this.Locators()` are defaults. They can be **overridden immutably** via `WithLocators()`, enabling a test-component-harness approach — the component declares how it normally finds its elements, but a test can derive a customized instance when the context requires it.
 
-The override logic lives in `PageFragment` — when `locatorOverrides` are passed to the constructor, `this.Locators()` automatically merges them with the defaults:
+The override logic lives in `PageFragment` — `WithLocators()` returns a new instance whose `this.Locators()` bag is merged with the provided overrides:
 
 ```typescript
 class SearchBox extends PageComponent {
@@ -99,21 +99,21 @@ search.locators.input;        // → this.root.locator('input')
 search.locators.submitButton;  // → this.root.locator('button[type="submit"]')
 
 // Override — swap the input locator for a specific test:
-const search = new SearchBox({
-  root: rootLocator,
+const search = new SearchBox(rootLocator).WithLocators({
   input: rootLocator.locator('[data-testid="search-input"]'),
 });
 search.locators.input;        // → the overridden locator
 search.locators.submitButton;  // → still the default
 ```
 
-Only the keys you provide are overridden; the rest keep their defaults. This makes `this.Locators()` provide *defaults* rather than *the* locators — a specific test, or a parent composing the component in an unusual layout, can override individual locators without subclassing.
+Only the keys you provide are overridden; the rest keep their defaults. `WithLocators()` never mutates the original instance — it returns a new one with the customized locator bag.
 
 ### Protected factories
 
 | | |
 |---|---|
-| `this.Locators(bag)` | Creates a typed locator bag. On `PageComponent`s, auto-includes `root`. Applies constructor overrides if present. |
+| `this.Locators(bag)` | Creates a typed locator bag. On `PageComponent`s, auto-includes `root`. Applies any pending locator overrides. |
+| `this.WithLocators(overrides)` | Returns a new instance with locator overrides applied. `root` is never overrideable. |
 | `this.State(fn)` | Creates a `StateFunction<R>`. Auto-discovers its property name (`ClassName.propertyName`) for error messages. |
 | `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver function. |
 | `this.waitFor` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
@@ -203,14 +203,14 @@ Adapters can further extend the generated classes to simplify the consumer-facin
 ```typescript
 const { PageObject: BasePageObject, PageComponent: BasePageComponent } = createAdapter(PlaywrightPageFragment);
 
-// PageObject: accepts Page or locator overrides
+// PageObject: accepts Page
 abstract class PageObject extends BasePageObject {
-  constructor(pageOrOverrides: Page | Record<string, Locator>) { ... }
+  constructor(page: Page) { ... }
 }
 
-// PageComponent: accepts root Locator or options bag
+// PageComponent: accepts root Locator
 abstract class PageComponent extends BasePageComponent {
-  constructor(rootOrOptions: Locator | { root: Locator; [key: string]: Locator }) { ... }
+  constructor(root: Locator) { ... }
 }
 ```
 

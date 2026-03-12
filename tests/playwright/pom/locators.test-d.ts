@@ -87,4 +87,27 @@ async function testStatesWithLocators(w: Widget, s: SimpleComponent) {
   void val; void vis;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// 6. WithLocators() accepts only declared locator keys
+// ═══════════════════════════════════════════════════════════════════
+
+declare const root: Locator;
+
+function testWithLocators() {
+  const widget = new Widget(root);
+  const dashboard = {} as Dashboard;
+
+  widget.WithLocators({ input: root, label: root });
+  dashboard.WithLocators({ sidebar: root });
+
+  // @ts-expect-error — root is not overrideable
+  widget.WithLocators({ root });
+
+  // @ts-expect-error — empty override bag is not allowed
+  widget.WithLocators({});
+
+  // @ts-expect-error — unknown locator key
+  widget.WithLocators({ missing: root });
+}
+
 export {};
