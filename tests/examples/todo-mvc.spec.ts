@@ -32,7 +32,7 @@ test.describe('State Queries', () => {
     // Get a TodoItem and query its states
     const item = await todoPage.items.at(0);
     expect(item).toBeDefined();
-    expect(await item!.getText()).toBe('My task');
+    expect(await item!.text()).toBe('My task');
     expect(await item!.isCompleted()).toBe(false);
   });
 
@@ -64,7 +64,7 @@ test.describe('Collection Operations', () => {
     // Filter to get only completed items
     const completedItems = await todoPage.items.filter({ isCompleted: true }).all();
     expect(completedItems).toHaveLength(1);
-    await expect(completedItems[0]!).toHaveState({ getText: 'Will complete' });
+    await expect(completedItems[0]!).toHaveState({ text: 'Will complete' });
 
     // Filter to get only active items
     const activeItems = await todoPage.items.filter({ isCompleted: false }).all();
@@ -77,7 +77,7 @@ test.describe('Collection Operations', () => {
     await todoPage.addTodos(['Find me', 'Not me', 'Neither']);
 
     // Find specific item by text
-    const item = await todoPage.items.find({ getText: 'Find me' });
+    const item = await todoPage.items.find({ text: 'Find me' });
     expect(item).toBeDefined();
     // Verify found item's other state (text was already used for finding)
     await expect(item!).toHaveState({ isCompleted: false });
@@ -90,7 +90,7 @@ test.describe('Collection Operations', () => {
 
     // Custom filter: items with text longer than 10 characters
     const longItems = await todoPage.items
-      .filter({ getText: (text: string) => text.length > 10 })
+      .filter({ text: (text: string) => text.length > 10 })
       .all();
 
     expect(longItems).toHaveLength(2);
@@ -107,7 +107,7 @@ test.describe('Page Object Model', () => {
     await expect(todoPage).toHaveState({ itemCount: 2 });
 
     const first = await todoPage.items.at(0);
-    await expect(first!).toHaveState({ getText: 'First task', isCompleted: false });
+    await expect(first!).toHaveState({ text: 'First task', isCompleted: false });
   });
 
   test('page-level states derive from component states', async ({ page }) => {
@@ -561,13 +561,13 @@ test.describe('Action Effects System', () => {
       await todoPage.addTodo('Original text');
 
       const item = await todoPage.items.at(0);
-      await expect(item!).toHaveState({ getText: 'Original text' });
+      await expect(item!).toHaveState({ text: 'Original text' });
 
       const newText = 'Updated text';
-      // edit action has effect: [getText, newText]
+      // edit action has effect: [text, newText]
       await item!.edit(newText);
 
-      await expect(item!).toHaveState({ getText: newText });
+      await expect(item!).toHaveState({ text: newText });
     });
   });
 });
@@ -627,7 +627,7 @@ test.describe('State Assertions (Auto-Retry)', () => {
       // Assert component state
       await expect(item!).toHaveState({
         isCompleted: false,
-        getText: 'Buy milk',
+        text: 'Buy milk',
       });
 
       // Toggle and assert again
