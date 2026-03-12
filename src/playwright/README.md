@@ -152,7 +152,7 @@ await expect(todoPage).toHaveState(
 
 All POM classes provide a `this.Locators()` / `locators` system for type-safe locator management. Use `this.Locators()` to declare a component's locators as a field; skip the field for components that only use `root`. Locator types are auto-inferred — no generics needed.
 
-`this.Locators()` defines the **default** locator set — defaults can be overridden at instantiation time. See [`pom-universal` docs](../pom-universal/README.md#constructor-overrides-options-bag) for the override pattern.
+`this.Locators()` defines the **default** locator set — derive customized instances with `WithLocators(...)` when you need to swap individual locators. See [`pom-universal` docs](../pom-universal/README.md#override-mechanism) for the override pattern.
 
 ### `PageFragment`
 

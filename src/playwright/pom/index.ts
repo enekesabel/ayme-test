@@ -45,29 +45,17 @@ function isPage(value: unknown): value is Page {
 }
 
 abstract class PageObject extends BasePageObject {
-  constructor(pageOrOverrides: Page | Record<string, Locator>) {
-    if (isPage(pageOrOverrides)) {
-      super(undefined, pageOrOverrides);
-    } else {
-      const locators = Object.values(pageOrOverrides);
-      if (locators.length === 0) {
-        throw new Error('Locator overrides must contain at least one locator to derive Page');
-      }
-      super(pageOrOverrides, locators[0]!.page());
+  constructor(page: Page) {
+    if (!isPage(page)) {
+      throw new Error('PageObject constructor requires a Playwright Page');
     }
+    super(page);
   }
 }
 
-function isLocatorOptionsBag(value: unknown): value is Record<string, Locator> & { root: Locator } {
-  return typeof value === 'object' && value !== null && 'root' in value
-    && typeof (value as Record<string, unknown>).root === 'object';
-}
-
 abstract class PageComponent extends BasePageComponent {
-  constructor(rootOrOptions: Locator | (Record<string, Locator> & { root: Locator })) {
-    const isOptions = isLocatorOptionsBag(rootOrOptions);
-    const root = isOptions ? rootOrOptions.root : rootOrOptions as Locator;
-    super(isOptions ? rootOrOptions : root, undefined, root.page());
+  constructor(root: Locator) {
+    super(root, root.page());
   }
 }
 

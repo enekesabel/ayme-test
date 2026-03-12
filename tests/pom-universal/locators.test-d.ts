@@ -102,19 +102,28 @@ function testNoRootOnPageObject(d: Dashboard) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CONTRACT 7: constructor override (options bag) is accepted
+// CONTRACT 7: WithLocators() accepts only declared locator keys
 // ═══════════════════════════════════════════════════════════════════
 
-function testConstructorOverride() {
+function testWithLocators() {
   const root = mockLocator('.root');
   const customInput = mockLocator('.custom-input');
+  const widget = new Widget(root);
+  const customized = widget.WithLocators({ input: customInput });
+  const dashboard = new Dashboard();
 
-  new Widget(root, undefined);
-  new Widget({ root, input: customInput }, undefined);
-  new Widget({ root, input: customInput, label: mockLocator('.custom-label') }, undefined);
+  const typedInput: MockLocator = customized.locators.input;
+  const typedSidebar: MockLocator = dashboard.WithLocators({ sidebar: mockLocator('.custom-sidebar') }).locators.sidebar;
+  void typedInput; void typedSidebar;
 
-  // @ts-expect-error — options bag must include root
-  new Widget({ input: customInput }, undefined);
+  // @ts-expect-error — root is not overrideable
+  widget.WithLocators({ root });
+
+  // @ts-expect-error — empty override bag is not allowed
+  widget.WithLocators({});
+
+  // @ts-expect-error — unknown locator key
+  widget.WithLocators({ missing: customInput });
 }
 
 export {};
