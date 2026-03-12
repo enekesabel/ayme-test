@@ -1,30 +1,165 @@
 # @qaide/test
 
-State-driven, semantic web UI and E2E testing.
+**State-driven, semantic testing for Playwright.**
+
+`@qaide/test` is a **drop-in companion** for `@playwright/test` that gives your tests a structure layer — semantic state queries, self-verifying actions, and typed page objects that keep implementation details out of your test code.
+
+It's **100% compatible** with Playwright. Same runner, same config, same reports. You just import from `@qaide/test/playwright` instead of `@playwright/test` and get a better model for writing **tests that survive UI changes**.
+
+**What's inside:**
+
+- **[`@qaide/test/primitives`](src/primitives/README.md)**:`State`, `Action`, `Collection`, `waitFor` —  framework-agnostic, stateful testing primitives — works without classes
+- **[`@qaide/test/pom-universal`](src/pom-universal/README.md)**: universal Page Object Model, built on top of the primitives — driver-neutral, bring your own framework
+- **[`@qaide/test/playwright`](src/playwright/README.md)**: Playwright-specific POM implementation, improved Action reporting, `toHaveState` assertion — built on top of the universal POM
 
 ## Why
 
-Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
+> Stop testing implementation details. Start testing behavior.
 
-`@qaide/test` offers a different model — define *what should be true* as named semantic queries (`State`), then assert those queries directly:
+Playwright is an incredible tool. Its locator engine, auto-waiting, and tracing are best-in-class. But Playwright gives you *primitives* — it doesn't prescribe how to keep tests maintainable as your app and test suite grow.
 
-- **`State` + `waitFor`** — framework-agnostic semantic state queries and polling assertions. Define facts about the system (`itemCount`, `isReady`) and wait for them to become true.
-- **`Action` + effects** — wrap operations with expected state changes. An action captures a before-snapshot, runs the operation, and polls until the declared effects are satisfied.
-- **Semantic POM** — structure tests with typed page objects and components. Each POM class encapsulates its states (`this.State(...)`), actions (`this.Action(...)`), and collections (`this.Collection(...)`), keeping implementation details out of tests.
-- **`toHaveState`** 🎭 *(Playwright only)* — retrying state assertions on any POM or plain stateful object.
+In practice:
 
-Implementation details stay in one place. Tests express intent and stay resilient to UI changes.
+- Tests **break when the UI changes**, even though behavior didn't
+- Selectors and assertion logic are **scattered** across every test file
+- Page objects are just **bags of locators** with no semantic meaning
+- Synchronization relies on **manual waits and timeouts**
+- There's **no clear boundary** between *what* the test checks and *how*
+
+If this sounds familiar, you're not alone.
+
+**@qaide/test gives you that missing layer:**
+
+- Implementation details live in **one place** — tests express pure intent
+- Actions **know when they're done** — no manual waits, no flaky timeouts
+- **Named semantic states** replace brittle assertions
+- **Typed page objects** with built-in collections and filtering
+- **Built-in de-flickering** — `stableFor` ensures states hold before assertions pass, eliminating flaky transitions
+- **Automatic step reporting** in Playwright's HTML report and trace viewer
+
+## Enough talk, show me the code
+
+Here's a typical Playwright test for TodoMVC:
+
+```typescript
+test('add todos and complete one', async ({ page }) => {
+  await page.goto('https://demo.playwright.dev/todomvc/#/');
+
+  // Same fill+press sequence repeated for each item
+  await page.locator('.new-todo').fill('Buy milk');
+  await page.locator('.new-todo').press('Enter');
+  await page.waitForTimeout(300); // arbitrary wait to avoid input race condition
+  await page.locator('.new-todo').fill('Ship docs');
+  await page.locator('.new-todo').press('Enter');
+
+  await page.locator('.todo-list li').first().locator('.toggle').click();
+
+  // We want to verify: "2 items with the right text, first one completed"
+  // But we're asserting implementation details, not meaningful user-perceived state
+  await expect(page.locator('.todo-list li')).toHaveCount(2);                        // DOM element count
+  await expect(page.locator('.todo-list li').nth(0).locator('label')).toHaveText('Buy milk');  // label text
+  await expect(page.locator('.todo-list li').nth(1).locator('label')).toHaveText('Ship docs'); // label text
+  await expect(page.locator('.todo-list li').first()).toHaveClass(/completed/);       // CSS class
+  await expect(page.locator('.todo-count')).toHaveText('1 item left');               // counter element text
+});
+```
+
+It works, but every assertion is coupled to *how* the UI represents state, not *what* the user perceives. Rename a class? Restructure the markup? The test breaks.
+
+Here's the same test with `@qaide/test`:
+
+```typescript
+import { test, expect } from '@qaide/test/playwright';
+
+test('add todos and complete one', async ({ page }) => {
+  const todoPage = new TodoPage(page);     // typed page object, not a locator bag
+
+  await todoPage.open();
+  await todoPage.addTodo('Buy milk');       // step: TodoPage.addTodo(text: "Buy milk")
+  await todoPage.addTodo('Ship docs');      // no arbitrary waits — action post-conditions are automatically ensured
+
+  const first = await todoPage.items.at(0); // typed collection access
+  const second = await todoPage.items.at(1);
+  await expect(first).toHaveState({ text: 'Buy milk' });
+  await expect(second).toHaveState({ text: 'Ship docs' });
+
+  await first.toggle();                     // step: TodoItem.toggle()
+
+  // Semantic state — what the user sees, not how the DOM represents it
+  await expect(first).toHaveState({ text: 'Buy milk', isCompleted: true });
+  await expect(todoPage).toHaveState({ itemCount: 2, completedCount: 1 });
+});
+```
+
+No selectors in the test. No CSS classes. No DOM structure assumptions. The test expresses what the user perceives, not how the page is built.
+
+Here's the `TodoPage` that makes it possible:
+
+```typescript
+import { PageObject, PageComponent } from '@qaide/test/playwright';
+
+class TodoItem extends PageComponent {
+  locators = this.Locators({
+    label: this.root.locator('label'),
+    checkbox: this.root.locator('.toggle'),
+  });
+
+  text = this.State(() => this.locators.label.innerText());
+  isCompleted = this.State(() => this.locators.checkbox.isChecked());
+
+  // Action — logged as step: TodoItem.toggle()
+  toggle = this.Action(async () => {
+    await this.locators.checkbox.click();
+  });
+}
+
+class TodoPage extends PageObject {
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoListItems: this.page.locator('.todo-list li'),
+  });
+
+  // Not everything needs to be exposed to tests
+  private inputIsEmpty = this.State(async () =>
+    (await this.locators.newTodoInput.inputValue()) === ''
+  );
+
+  items = this.Collection(TodoItem, this.locators.todoListItems);
+  itemCount = this.State(() => this.items.count());
+  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
+  activeCount = this.State(() => this.items.filter({ isCompleted: false }).count());
+
+  // Regular method — Action wrapper is optional
+  async open() {
+    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
+  }
+
+  // Action — logged as step: TodoPage.addTodo(text: "Buy milk")
+  // Effect waits for the input to clear before returning —
+  // prevents race conditions when adding multiple todos in sequence
+  addTodo = this.Action(async (text: string) => {
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
+  }).effect(this.inputIsEmpty, true);
+}
+```
+
+All the selectors and mechanics live in the page object. If the DOM changes, you update one place. The tests don't move.
 
 ## Install
 
 ```bash
-npm install @qaide/test
+npm install @qaide/test @playwright/test
 ```
 
-If you're using the Playwright adapter ([`@qaide/test/playwright`](src/playwright/README.md)) 🎭, also install `@playwright/test`:
+`@qaide/test/playwright` re-exports everything from `@playwright/test`, so you can replace your imports without changing anything else. Works with your existing `playwright.config.ts` — no extra configuration needed.
 
-```bash
-npm install @playwright/test @qaide/test
+```typescript
+// Before
+import { test, expect } from '@playwright/test';
+
+// After — same API, plus toHaveState and typed POMs
+import { test, expect } from '@qaide/test/playwright';
 ```
 
 Run tests with the standard Playwright runner:
@@ -33,214 +168,221 @@ Run tests with the standard Playwright runner:
 npx playwright test
 ```
 
-## Quick Start
+## Core Concepts
+
+> The examples below use `@qaide/test/playwright` — the typed POM layer built on top of Playwright.  
+>
+> For framework-agnostic primitives (`State`, `Action`, `Collection`, `waitFor`) without classes, see the [primitives docs](src/primitives/README.md).
+
+### Locators — the bridge to the DOM
+
+`this.Locators({...})` defines the **single connection point** between your page object and the actual DOM. Everything else — states, actions, collections — references these locators, never raw selectors.
+
+When the DOM changes, you update locators in one place. States, actions, and tests don't move.
 
 ```typescript
-import { test, expect, PageObject, PageComponent } from '@qaide/test/playwright';
-
-class TodoItem extends PageComponent {
-  checkbox = this.root.locator('.toggle');
-
-  isCompleted = this.State(() => this.checkbox.isChecked());
-
-  toggle = this.Action(async () => {
-    await this.checkbox.click();
-  }).effect(this.isCompleted, (cur, prev) => cur === !prev);
-}
-
 class TodoPage extends PageObject {
-  newTodoInput = this.page.locator('.new-todo');
-
-  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
-  itemCount = this.State(() => this.items.count());
-
-  goto = this.Action(async () => {
-    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoListItems: this.page.locator('.todo-list li'),
   });
 
-  addTodo = this.Action(async (text: string) => {
-    await this.newTodoInput.fill(text);
-    await this.newTodoInput.press('Enter');
-  }).effect(this.itemCount, (cur, prev) => cur === prev + 1);
+  // Everything below references this.locators, not raw selectors
+  items = this.Collection(TodoItem, this.locators.todoListItems);
+  itemCount = this.State(() => this.items.count());
 }
-
-test('adds and completes a todo', async ({ page }) => {
-  const todoPage = new TodoPage(page);
-
-  await todoPage.goto();
-  await todoPage.addTodo('Ship docs');
-
-  const first = await todoPage.items.at(0);
-  await first!.toggle();
-
-  await expect(todoPage).toHaveState({ itemCount: 1 });
-});
 ```
 
-For the full 🎭 Playwright API reference (`toHaveState` options, POM class details, step reporting): [`src/playwright/README.md`](src/playwright/README.md)
+### State — semantic queries
 
-## Core Model
+A `State` defines how to read a fact about the system. It's a named async function that returns the current value of something you care about.
 
-### `State` — semantic queries
-*Framework-agnostic · [`@qaide/test/primitives`](src/primitives/README.md)*
-
-`State` defines how to read a fact about the system. It's a named async function — call it directly, wait on it, or assert it.
-
-Inside a POM class, `this.State(...)` auto-names states from the property key:
+Instead of asserting on DOM attributes (`toHaveClass`, `toHaveAttribute`, `toBeVisible`), you define what "completed" or "item count" means once, and then assert on the *meaning*:
 
 ```typescript
-itemCount = this.State(async () => this.todoItems.count());
-// named 'TodoPage.itemCount' — shown in error messages
+class TodoItem extends PageComponent {
+  locators = this.Locators({
+    checkbox: this.root.locator('.toggle'),
+  });
 
-const n = await todoPage.itemCount();           // read
-await todoPage.itemCount.waitFor(3);            // wait
-await expect(todoPage).toHaveState({ itemCount: 3 }); // assert 🎭
+  // Define what "completed" means for this component
+  isCompleted = this.State(() => this.locators.checkbox.isChecked());
+}
 ```
 
-`State` and `waitFor` are part of [`@qaide/test/primitives`](src/primitives/README.md) and work without Playwright. `toHaveState` 🎭 is Playwright-specific.
-
-### `Action` — operations with expected effects
-*Framework-agnostic · [`@qaide/test/primitives`](src/primitives/README.md)*
-
-`Action` wraps an async operation and declares what state changes it expects. When called, it captures a before-snapshot, runs the operation, and polls until all effects are satisfied.
-
-Inside a POM class, `this.Action(...)` auto-names actions from the property key. In Playwright POM classes, actions also appear as named steps in the HTML report and trace viewer.
+Now your tests never mention checkboxes:
 
 ```typescript
-addTodo = this.Action(async (text: string) => {
-  await this.newTodoInput.fill(text);
-  await this.newTodoInput.press('Enter');
-}).effect(this.itemCount, (cur, prev) => cur === prev + 1);
-// named 'TodoPage.addTodo' — appears as a step in Playwright reports
-// after running, waits for itemCount to increment by 1
+await expect(item).toHaveState({ isCompleted: true });
 ```
 
-Effects can be chained and come in several styles — absolute values, relative predicates (with before-snapshot), and deferred effects (when the expectation depends on the action's arguments):
+If the implementation of "completed" changes (say, from a checkbox to a data attribute), you update the state definition. Tests stay the same.
+
+States can be read directly, waited on, or asserted:
 
 ```typescript
-toggle = this.Action(async () => {
-  await this.checkbox.click();
-}).effect(this.isCompleted, (cur, prev) => cur === !prev);
-
-markAsCompleted = this.Action(async () => {
-  if (!(await this.isCompleted())) await this.checkbox.click();
-}).effect(this.isCompleted, true);
-
-edit = this.Action(async (newText: string) => {
-  await this.label.dblclick();
-  await this.editInput.fill(newText);
-  await this.editInput.press('Enter');
-}).effect((effect, newText) => effect(this.getText, newText));
+const completed = await item.isCompleted();                   // read current value
+await item.isCompleted.waitFor(true);                          // poll until true
+await todoPage.itemCount.waitFor(n => n > 0);                 // poll with predicate
+await expect(item).toHaveState({ isCompleted: true });         // assert with retry (Playwright)
 ```
 
-Once effects are declared, `.options()` configures effect polling (timeout and stability):
+Both `state.waitFor()` and `toHaveState` accept shared expectation options (`timeout`, `stableFor`) — see below.
 
-```typescript
-save = this.Action(async () => {
-  await this.saveButton.click();
-}).effect(this.isSaved, true)
-  .options({ timeout: 10_000, stableFor: 200 });
-```
+### Action — operations with expected effects
 
-Full API reference: [`src/primitives/README.md`](src/primitives/README.md)
+An `Action` wraps an async operation. Optionally, it declares what state changes it expects — when called, it runs the operation and then polls until all declared effects are satisfied.
 
-### `toHaveState` — polling assertions 🎭
-*Playwright only · [`@qaide/test/playwright`](src/playwright/README.md)*
-
-`toHaveState` polls state functions until all expectations pass simultaneously. Supports exact values, predicates, and a `stableFor` option for flickery transitions.
-
-It works with any object that has `StateFunction` properties — POM classes or plain objects:
-
-```typescript
-// On a POM class
-await expect(todoPage).toHaveState({
-  itemCount: 3,
-  completedCount: (n: number) => n >= 1,
-}, { timeout: 10000, stableFor: 200 });
-
-// On a plain object — using States() to bulk-create named state functions
-import { States } from '@qaide/test/primitives';
-
-const counters = States({
-  total: async () => getTotalCount(),
-  active: async () => getActiveCount(),
-});
-await expect(counters).toHaveState({ total: 5, active: 3 });
-```
-
-### `Collection` — typed item sets
-*Framework-agnostic · [`@qaide/test/primitives`](src/primitives/README.md) · with POM shorthand in [`@qaide/test/playwright`](src/playwright/README.md)*
-
-`Collection` wraps a set of component instances with state-based filtering and lookup.
-
-Inside a POM class, use `this.Collection(...)` to declare collections as properties:
+This eliminates manual synchronization. You don't need `waitForSelector`, `waitForTimeout`, or retry loops — the action *knows when it's done*:
 
 ```typescript
 class TodoPage extends PageObject {
-  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
+  // ...
+  private inputIsEmpty = this.State(async () =>
+    (await this.locators.newTodoInput.inputValue()) === ''
+  );
+
+  addTodo = this.Action(async (text: string) => {
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
+  }).effect(this.inputIsEmpty, true);
+  // After running, waits for the input to clear before returning
+}
+
+// In your test — no waits needed between sequential calls
+await todoPage.addTodo('Buy milk');
+await todoPage.addTodo('Ship docs');
+```
+
+Actions also appear as named steps in Playwright's HTML report and trace viewer:
+
+```
+TodoPage.addTodo(text: "Buy milk")
+TodoPage.addTodo(text: "Ship docs")
+```
+
+### Collection — typed item sets
+
+A `Collection` wraps a set of component instances with state-based filtering and lookup. Instead of manually iterating `locator.all()` and wrapping each element, you declare the collection once:
+
+```typescript
+class TodoPage extends PageObject {
+  locators = this.Locators({
+    // ...
+    todoListItems: this.page.locator('.todo-list li'),
+  });
+
+  items = this.Collection(TodoItem, this.locators.todoListItems);
+  itemCount = this.State(() => this.items.count());
+  completedCount = this.State(() => this.items.filter({ isCompleted: true }).count());
 }
 ```
 
-The collection can then be queried:
+Then query it using semantic state:
 
 ```typescript
-const first = await items.at(0);
-const completed = await items.filter({ isCompleted: true }).all();
-const found = await items.find({ getText: 'Ship docs' });
+const first = await todoPage.items.at(0);
+const completed = await todoPage.items.filter({ isCompleted: true }).all();
+const found = await todoPage.items.find({ text: 'Ship docs' });
 ```
 
-For advanced cases, `filter(...)` and `find(...)` also accept an item predicate:
+Collections support async iteration too:
 
 ```typescript
-const urgentOrCompleted = await items
-  .filter(async item =>
-    (await item.isCompleted()) || (await item.getText()).includes('urgent')
-  )
-  .all();
-```
-
-Use state expectations when possible; predicates are the escape hatch for `OR` conditions, cross-state relations, or other custom item logic.
-
-It also supports async iteration:
-
-```typescript
-for await (const item of items) {
-  console.log(await item.getText());
-}
-
-for await (const item of items.filter({ isCompleted: true })) {
-  console.log(await item.getText());
+for await (const item of todoPage.items) {
+  console.log(await item.text());
 }
 ```
 
-Each `for await...of` run resolves a fresh snapshot of the current matching items. It is not a live stream, and it does not cache across separate iteration runs.
+### Assertions & Polling
 
-Outside POM classes, use `Collection.create(...)` from `@qaide/test/primitives` directly.
+#### `toHaveState`
 
----
+`toHaveState` is a Playwright-compatible assertion that polls state functions until all expectations pass simultaneously. It uses AND logic — all states must match at the same time:
 
-## Other Packages
+```typescript
+await expect(todoPage).toHaveState({
+  itemCount: 3,
+  completedCount: 1,
+  activeCount: 2,
+});
+```
 
-### `@qaide/test/primitives` — framework-agnostic core
+It supports exact values and predicates:
 
-`State`, `States`, `Action`, `Collection`, and `waitFor` without any Playwright dependency. Use this when:
+```typescript
+await expect(todoPage).toHaveState({
+  itemCount: (n: number) => n >= 1,
+});
+```
 
-- building custom test harnesses with a different driver
-- incrementally adopting state-driven assertions in existing tests
-- using the state model outside of a browser context
+`toHaveState` works with `PageObject`, `PageComponent`, or any object with state function properties.
 
-→ [`src/primitives/README.md`](src/primitives/README.md)
+#### Expectation options — `timeout` and `stableFor`
 
-### `@qaide/test/pom-universal` — POM adapter layer
+All state expectations share the same options:
 
-The `PageFragment` base class that the Playwright package is built on. Use this when:
+| Option | Description | Default |
+|---|---|---|
+| `timeout` | Maximum time to wait (ms) | `5000` |
+| `stableFor` | State must hold continuously for this many ms before resolving | `0` |
 
-- building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.)
-- extending the POM model with driver-specific behavior
+These options are accepted by:
+- `state.waitFor(expected, options)`
+- `expect(target).toHaveState(expectations, options)`
+- `waitFor(state, expected, options)` (standalone polling)
+- `.effect(...).options(options)` (action effects)
 
-→ [`src/pom-universal/README.md`](src/pom-universal/README.md)
+**`stableFor` is your de-flickering tool.** Ever had a test flake because the UI briefly showed the expected value before settling? `stableFor` fixes that — the state must *hold* for the specified duration before the expectation resolves:
 
----
+```typescript
+// Must hold for 200ms before resolving
+await todoPage.itemCount.waitFor(3, { stableFor: 200 });
+await expect(todoPage).toHaveState({ isReady: true }, { stableFor: 250 });
+```
+
+## Deep Dive
+
+Advanced patterns and concepts.
+
+### Locators
+
+- [`WithLocators`](src/pom-universal/README.md#withlocatorsoverrides) — swap locators at runtime without subclassing
+
+### State
+
+- [State composition](src/primitives/README.md#state-composition) — derive states from other states or child components
+- [Abstracting DOM representations](src/primitives/README.md#abstracting-dom-representations) — collapse multiple DOM signals into one semantic boolean
+
+### Action
+
+- [Step reporting](src/playwright/README.md#step-reporting) — automatic named steps in Playwright reports
+- [Effect styles](src/primitives/README.md#effect) — absolute, relative, deferred, and cross-state effects
+- [When to use effects](src/primitives/README.md#when-to-use-effects) — UI completion vs application invariants
+
+### Assertions & Polling
+
+- [`waitFor`](src/primitives/README.md#waitforstate-expected-options) — standalone polling for single states, tuples, or multi-condition waits
+
+### Collection
+
+- [Filtering](src/primitives/README.md#filtering) — by state conditions or custom predicates, chainable
+
+## Under the Hood
+
+`@qaide/test` is built in three layers, each usable independently:
+
+```
+@qaide/test/primitives    → framework-agnostic core
+@qaide/test/pom-universal → driver-neutral POM base
+@qaide/test/playwright    → Playwright adapter
+```
+
+**`@qaide/test/primitives`** — `State`, `Action`, `Collection`, and `waitFor` without any Playwright dependency. Use this when building custom test harnesses, incrementally adopting state-driven assertions in existing tests, or using the state model outside of a browser context. → [API reference](src/primitives/README.md)
+
+**`@qaide/test/pom-universal`** — the `PageFragment` base class that the Playwright adapter is built on. Use this when building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.). → [API reference](src/pom-universal/README.md)
+
+**`@qaide/test/playwright`** — the main entrypoint for most users. Re-exports all of Playwright's API and adds `toHaveState`, typed POM classes (`PageObject`, `PageComponent`), and automatic step reporting. → [API reference](src/playwright/README.md)
 
 ## Stability
 

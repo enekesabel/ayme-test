@@ -44,7 +44,7 @@ export class TodoItem extends PageComponent {
 
   checkbox = new Checkbox(this.locators.checkbox);
 
-  getText = this.State(() => this.locators.label.innerText());
+  text = this.State(() => this.locators.label.innerText());
   isCompleted = this.State(() => this.checkbox.isChecked());
 
   toggle = this.Action(async () => {
@@ -68,7 +68,7 @@ export class TodoItem extends PageComponent {
     await this.locators.label.dblclick();
     await this.locators.editInput.fill(newText);
     await this.locators.editInput.press('Enter');
-  }).effect((effect, newText) => effect(this.getText, newText));
+  }).effect((effect, newText) => effect(this.text, newText));
 }
 
 export class TodoPage extends PageObject {
