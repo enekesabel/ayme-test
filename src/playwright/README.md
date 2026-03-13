@@ -1,88 +1,97 @@
-# @qaide/test/playwright 🎭
+# @qaide/test/playwright
 
-Playwright-compatible entrypoint with state-driven testing extensions.
-
-## What This Module Is
-
-`@qaide/test/playwright` is a drop-in replacement for `@playwright/test` imports. It re-exports all of Playwright's API and overrides `test` and `expect` with extended versions that add `toHaveState` and typed POM support.
-
-It also exports typed POM classes (`PageObject`, `PageComponent`) with built-in `this.State(...)`, `this.Action(...)`, and `this.Collection(...)` factories. Actions defined via `this.Action(...)` automatically appear as named steps in Playwright's HTML report and trace viewer.
-
----
-
-## Exports
-
-**Values**
-
-- `test` — Playwright test (re-export)
-- `expect` — extended expect with `toHaveState` for `PageFragment` instances
-- `PageObject`, `PageComponent`, `PageFragment` — Playwright POM classes
-- All other Playwright exports (`defineConfig`, `devices`, etc.)
-
-**Types**
-
-- `ToHaveStateExpectations<T>`
-- `ToHaveStateOptions`
-- `StateMatchers<T>`
-
----
-
-## Step Reporting
-
-Actions created via `this.Action(...)` in Playwright POM classes are automatically wrapped in `test.step(...)`. Step names include the class name, property name, and argument values — visible in Playwright's HTML report and trace viewer.
-
-**Step name format**
-
-Step names follow: `{ClassName.propertyName}(param1: value1, param2: value2)`.
-
-- Parameter names are extracted from the function signature.
-- Values are formatted inline: strings as `"value"`, numbers/booleans as-is, objects as JSON.
-- When there are no arguments: `{ClassName.propertyName}()`.
-
-| Action definition | Call | Step produced |
-|---|---|---|
-| `goto = this.Action(async () => { ... })` | `todoPage.goto()` | `TodoPage.goto()` |
-| `addTodo = this.Action(async (text: string) => { ... })` | `todoPage.addTodo('Buy milk')` | `TodoPage.addTodo(text: "Buy milk")` |
-
-Use `.named('custom name')` to override the auto-generated name:
+Drop-in replacement for `@playwright/test` with state-driven testing extensions.
 
 ```typescript
-addItem = this.Action(async (text: string) => {
-  // ...
-}).named('add');
-// step: 'add(text: "Buy milk")'
+// Before
+import { test, expect } from '@playwright/test';
+
+// After — same API, plus toHaveState and typed POMs
+import { test, expect } from '@qaide/test/playwright';
 ```
+
+Everything Playwright provides, plus:
+
+- **Typed POM classes** — [`PageObject`](#pageobject) and [`PageComponent`](#pagecomponent) built on the [universal POM](../pom-universal/README.md)
+- **[`toHaveState`](#tohavestate)** — polling assertion for semantic states on any object with state properties
+- **[Step reporting](#step-reporting)** — actions automatically appear as named steps in Playwright's HTML report and trace viewer
+
+---
+
+## At a Glance
+
+```typescript
+import { test, expect, PageObject, PageComponent } from '@qaide/test/playwright';
+import type { Page, Locator } from '@playwright/test';
+
+// PageComponent — scoped to a root Locator
+class TodoItem extends PageComponent {
+  constructor(root: Locator) { super(root); }
+
+  locators = this.Locators({
+    toggle: this.root.locator('.toggle'),  // this.root === root
+  });
+
+  // this.locators.root is auto-included by PageComponent
+  isVisible = this.State(() => this.locators.root.isVisible());
+  isCompleted = this.State(() => this.locators.toggle.isChecked());
+}
+
+// PageObject — scoped to a Playwright Page
+class TodoPage extends PageObject {
+  constructor(page: Page) { super(page); }
+
+  locators = this.Locators({
+    newTodoInput: this.page.locator('.new-todo'),
+    todoListItems: this.page.locator('.todo-list li'),
+  });
+
+  // Playwright shorthand — resolves locator.all() into TodoItem instances
+  items = this.Collection(TodoItem, this.locators.todoListItems);
+  itemCount = this.State(() => this.locators.todoListItems.count());
+
+  // step: TodoPage.addTodo(text: "Ship docs")
+  addTodo = this.Action(async (text: string) => {
+    await this.locators.newTodoInput.fill(text);
+    await this.locators.newTodoInput.press('Enter');
+  }).effect(this.itemCount, (cur, prev) => cur === prev + 1);
+}
+
+test('adds a todo', async ({ page }) => {
+  const todoPage = new TodoPage(page);
+  await todoPage.addTodo('Ship docs');
+
+  // Polling assertion — retries until all states match
+  await expect(todoPage).toHaveState({ itemCount: 1 });
+});
+```
+
+---
+
+## POM Classes
+
+Built on [`@qaide/test/pom-universal`](../pom-universal/README.md) — see the [universal POM docs](../pom-universal/README.md) for the full `PageFragment` API (`State`, `Action`, `Collection`, `Locators`, `waitFor`, `WithLocators`).
+
+### `PageObject`
+
+Constructor takes a Playwright `Page`. All subclasses have access to `this.page`.
+
+### `PageComponent`
+
+Constructor takes a `Locator`. `page` is derived automatically from `root.page()` — components only need a root locator.
+
+### Playwright-specific additions
+
+| | |
+|---|---|
+| `this.Collection(ComponentClass, locator)` | Shorthand — resolves `locator.all()` into component instances. |
+| `this.Action(fn)` | Actions automatically wrapped in `test.step(...)` for report visibility. |
 
 ---
 
 ## `toHaveState`
 
-Polls state functions on a `PageFragment` until all expectations pass simultaneously. Uses AND logic — all states must match at the same time.
-
-```typescript
-expect(fragment: PageFragment).toHaveState(
-  expectations: ToHaveStateExpectations<T>,
-  options?: ToHaveStateOptions
-): Promise<void>
-```
-
-**`ToHaveStateExpectations<T>`**
-
-An object where keys are state property names on `T`, and values are exact values or predicates:
-
-| Value form | Matches when |
-|---|---|
-| `true` / `3` / `'hello'` | State returns that exact value |
-| `(v) => boolean` | Predicate returns `true` |
-
-**`ToHaveStateOptions`**
-
-| | |
-|---|---|
-| `timeout?` | Maximum wait time in ms. Default: `5000`. |
-| `stableFor?` | All expectations must hold continuously for this many ms before resolving. Default: `0`. |
-
-**Example**
+Polls state functions until all expectations pass simultaneously. Works with `PageFragment` subclasses and plain objects — any object with `StateFunction` properties. Uses AND logic — all states must match at the same time.
 
 ```typescript
 // Exact value
@@ -100,9 +109,26 @@ await expect(todoPage).toHaveState({
 // With options
 await expect(todoPage).toHaveState(
   { isReady: true },
-  { timeout: 10000, stableFor: 250 }
+  { timeout: 10000, stableFor: 250 },
 );
+
+// Negation
+await expect(todoPage).not.toHaveState({ itemCount: 0 });
 ```
+
+### Expectation values
+
+| Value form | Matches when |
+|---|---|
+| `true` / `3` / `'hello'` | State returns that exact value |
+| `(v) => boolean` | Predicate returns `true` |
+
+### Options
+
+| Option | Description |
+|---|---|
+| `timeout?` | Maximum wait time in ms. Default: `5000`. |
+| `stableFor?` | All expectations must hold continuously for this many ms before resolving. Default: `0`. |
 
 > **How `expect` is overloaded:**
 > - Arrays → standard Playwright matchers (e.g. `toHaveLength`)
@@ -113,97 +139,31 @@ await expect(todoPage).toHaveState(
 
 ---
 
-## POM Classes
+## Step Reporting
 
-### `PageObject`
+Actions created via `this.Action(...)` in Playwright POM classes are automatically wrapped in `test.step(...)`. Step names include the class name, property name, and argument values — visible in Playwright's HTML report and trace viewer.
 
-Base class for full-page objects. Takes a `Page` as its constructor argument.
+### Step name format
 
-```typescript
-class PageObject {
-  constructor(page: Page)
-  readonly page: Page
-}
-```
+Step names follow: `{ClassName.propertyName}(param1: value1, param2: value2)`.
 
-### `PageComponent`
+- Parameter names are extracted from the function signature.
+- Values are formatted inline: strings as `"value"`, numbers/booleans as-is, objects as JSON.
+- When there are no arguments: `{ClassName.propertyName}()`.
 
-Base class for locator-rooted components. Takes only a `Locator` — `page` is derived automatically from `root.page()`.
+| Action definition | Call | Step produced |
+|---|---|---|
+| `open = this.Action(async () => { ... })` | `todoPage.open()` | `TodoPage.open()` |
+| `addTodo = this.Action(async (text: string) => { ... })` | `todoPage.addTodo('Buy milk')` | `TodoPage.addTodo(text: "Buy milk")` |
 
-```typescript
-class PageComponent {
-  constructor(root: Locator)
-  readonly root: Locator
-  readonly page: Page   // derived from root.page()
-}
-```
-
-### `PageFragment`
-
-Playwright-specific base class shared by both `PageObject` and `PageComponent`. Extends the universal `PageFragment` with Playwright-specific collection resolution and automatic step reporting.
-
-| | |
-|---|---|
-| `this.State(fn)` | Creates an auto-named `StateFunction<R>`. Name is `'ClassName.property'`. |
-| `this.Action(fn)` | Creates an auto-named `ActionFunction`. Wraps calls in `test.step(...)`. Supports `.effect()` chaining. |
-| `this.Collection(ComponentClass, locator)` | Creates a `Collection<T>` from a component class and Playwright locator. *(Playwright-specific shorthand)* |
-| `this.Collection(resolver)` | Creates a `Collection<T>` from any async resolver. |
-| `this.waitFor(...)` | Same as `waitFor(...)` from `@qaide/test/primitives`. |
-
----
-
-## End-To-End Example
+Use `.named('custom name')` to override the auto-generated name:
 
 ```typescript
-import { test, expect, PageObject, PageComponent } from '@qaide/test/playwright';
-
-class TodoItem extends PageComponent {
-  checkbox = this.root.locator('.toggle');
-
-  isCompleted = this.State(() => this.checkbox.isChecked());
-
-  toggle = this.Action(async () => {
-    await this.checkbox.click();
-  }).effect(this.isCompleted, (cur, prev) => cur === !prev);
-}
-
-class TodoPage extends PageObject {
-  newTodoInput = this.page.locator('.new-todo');
-
-  items = this.Collection(TodoItem, this.page.locator('.todo-list li'));
-  itemCount = this.State(() => this.items.count());
-
-  goto = this.Action(async () => {
-    await this.page.goto('https://demo.playwright.dev/todomvc/#/');
-  });
-
-  addTodo = this.Action(async (text: string) => {
-    await this.newTodoInput.fill(text);
-    await this.newTodoInput.press('Enter');
-  }).effect(this.itemCount, (cur, prev) => cur === prev + 1);
-}
-
-test('adds and completes a todo', async ({ page }) => {
-  const todoPage = new TodoPage(page);
-
-  await todoPage.goto();
-  await todoPage.addTodo('Ship docs');
-
-  const first = await todoPage.items.at(0);
-  await first!.toggle();
-
-  await expect(todoPage).toHaveState({ itemCount: 1 });
-});
+addItem = this.Action(async (text: string) => {
+  // ...
+}).named('add');
+// step: 'add(text: "Buy milk")'
 ```
-
----
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `State "..." is not a valid state function` | The key in `toHaveState` is not a state property on that fragment. Check the property name. |
-| No action step in report | Ensure the action is created with `this.Action(...)`. Plain methods and arrow functions don't produce steps. |
 
 ---
 
