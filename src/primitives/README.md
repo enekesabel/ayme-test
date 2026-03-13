@@ -4,55 +4,34 @@ Framework-agnostic primitives for state-driven testing.
 
 ## Why Use This
 
-Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shape, or driver-specific mechanics. A small UI refactor breaks many tests even when the behavior is unchanged.
+> The state-driven model without the POM framework.
 
-`@qaide/test/primitives` offers an alternative: define *what should be true* as named semantic queries (`State`), then assert those queries directly. The implementation detail (how to observe the value) is isolated in the state definition — not scattered across every test.
+Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shapes. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-The mental model:
+`@qaide/test/primitives` offers the foundation layer for an alternative — framework-agnostic building blocks for state-driven testing:
 
 - `State` — a named live query: `() => Promise<T>`. Encapsulates how to read a fact about the system.
 - `Action` — wraps an async operation and declares what state changes it expects.
 - `waitFor` — a polling assertion engine. Waits until all states match expectations.
 - `Collection` — typed item sets with state-based filtering and lookup.
 
+No classes, no framework dependency. Everything the POM layer uses internally, available for direct composition.
+
 **When to use primitives directly**
 
-Use `@qaide/test/primitives` when you want the state-driven assertion model without a POM framework. Typical cases:
+Use `@qaide/test/primitives` when you want the state-driven assertion model without page object classes. Typical cases:
 
-- building custom test harnesses
-- incremental adoption in existing test suites alongside other tools
-- using a driver or framework not covered by the Playwright adapter
+- Composing your own abstractions (functional, class-based, or hybrid)
+- Incremental adoption in existing test suites alongside other tools
+- Building custom adapters for drivers not covered by the Playwright package
+
+If you're using Playwright and want the full typed POM experience, start with [`@qaide/test/playwright`](../playwright/README.md).
 
 ---
 
-## `State`
+## State
 
-Create a semantic async state query.
-
-```typescript
-function State<R>(fn: () => Promise<R>): StateFunction<R>
-```
-
-**Parameters**
-
-| | |
-|---|---|
-| `fn` | Async getter called on each poll. May be sync — the return value is wrapped in a Promise. |
-
-**Returns** `StateFunction<R>` — a callable with `.waitFor()` and `.named()`:
-
-```typescript
-// Call to read the current value
-state(): Promise<R>
-
-// Wait until state matches expectation
-state.waitFor(expected: R | ((value: R) => boolean), options?: WaitForOptions): Promise<void>
-
-// Set a display name used in timeout error messages (chainable)
-state.named(name: string): StateFunction<R>
-```
-
-**Example**
+A `State` is a named async query that reads a fact about the system.
 
 ```typescript
 import { State } from '@qaide/test/primitives';
@@ -61,33 +40,83 @@ const itemCount = State(async () =>
   document.querySelectorAll('.todo-list li').length
 ).named('itemCount');
 
-await itemCount();                              // read current value
-await itemCount.waitFor(1);                     // wait until count equals 1
-await itemCount.waitFor(n => n > 0);            // wait until count > 0
-await itemCount.waitFor(1, { stableFor: 200 }); // wait until stable for 200ms
+await itemCount();                              // read the current value
+await itemCount.waitFor(3);                     // poll until count equals 3
+await itemCount.waitFor(n => n > 0);            // poll with a predicate
+await itemCount.waitFor(3, { stableFor: 200 }); // must hold for 200ms
 ```
+
+| Method | Description |
+|---|---|
+| `state()` | Read the current value |
+| `state.waitFor(expected, options?)` | Poll until state matches — see [`.waitFor(expected, options?)`](#waitforexpected-options) |
+| `state.named(name: string)` | Set a display name for error messages (chainable) |
+
+### `.waitFor(expected, options?)`
+
+Polls a state until it matches the expected value or predicate. Throws `StateExpectationTimeoutError` on timeout, or `StateExpectationStabilityError` if the value matches but doesn't hold for the required `stableFor` duration.
+
+```typescript
+await itemCount.waitFor(3);                                // exact value
+await itemCount.waitFor(n => n > 0);                       // predicate
+await itemCount.waitFor(3, { timeout: 10_000 });           // custom timeout
+await itemCount.waitFor(3, { stableFor: 200 });            // must hold for 200ms
+await itemCount.waitFor(n => n > 0, { stableFor: 200 });   // predicate + stability
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `timeout` | Maximum time to wait (ms) | `5000` |
+| `stableFor` | Value must hold continuously for this many ms before resolving | `0` |
+
+### State composition
+
+States can derive their value from other states. This keeps each layer focused on its own abstraction level:
+
+```typescript
+import { State, Collection } from '@qaide/test/primitives';
+
+const isChecked = State(async () =>
+  checkbox.getAttribute('aria-checked') === 'true'
+).named('isChecked');
+
+const items = Collection.create(async () =>
+  Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
+    isCompleted: State(async () => el.classList.contains('completed')),
+    text: State(async () => el.textContent ?? ''),
+  }))
+);
+
+// A state built from a collection — count of completed items
+const completedCount = State(async () =>
+  items.filter({ isCompleted: true }).count()
+).named('completedCount');
+```
+
+Tests see `completedCount` — they don't need to know it's derived from a filtered collection.
+
+### Abstracting DOM representations
+
+A single concept in the UI is often represented by multiple DOM signals. "Editing" in TodoMVC, for example, means the label is hidden, the edit input is visible, *and* the edit input is focused. A `State` collapses that into one semantic query:
+
+```typescript
+const isEditing = State(async () => {
+  const [labelHidden, editInputVisible, editInputFocused] = await Promise.all([
+    label.isHidden(),
+    editInput.isVisible(),
+    editInput.evaluate(el => el === document.activeElement),
+  ]);
+  return labelHidden && editInputVisible && editInputFocused;
+}).named('isEditing');
+```
+
+Today "editing" means a hidden label, a visible input, and focus. Tomorrow it might mean a `data-editing` attribute. The state definition changes; the test doesn't.
 
 ---
 
-## `States`
+## States
 
-Bulk-create named states from an object. Keys become state names automatically.
-
-```typescript
-function States<T extends Record<string, () => Promise<unknown>>>(
-  definitions: T
-): { [K in keyof T]: StateFunction<ReturnType<T[K]>> }
-```
-
-**Parameters**
-
-| | |
-|---|---|
-| `definitions` | Object mapping state names to async getters. Each key becomes the state's `.named(...)` value. |
-
-**Returns** Object with the same keys; each value is a named `StateFunction`.
-
-**Example**
+Convenience helper to create multiple named states at once. Keys become display names automatically.
 
 ```typescript
 import { States } from '@qaide/test/primitives';
@@ -96,54 +125,94 @@ const { isReady, itemCount } = States({
   isReady: async () => document.querySelector('.loading') === null,
   itemCount: async () => document.querySelectorAll('.todo-list li').length,
 });
+
+// Equivalent to:
+// const isReady = State(async () => ...).named('isReady');
+// const itemCount = State(async () => ...).named('itemCount');
 ```
 
 ---
 
-## `Action`
+## Collection\<T\>
 
-Wraps an async operation and declares what state changes it expects.
-
-```typescript
-function Action<Args, R>(fn: (...args: Args) => Promise<R>): ActionFunction<Args, R>
-```
-
-**Parameters**
-
-| | |
-|---|---|
-| `fn` | Async function to execute. Arguments are preserved and forwarded. |
-
-**Returns** `ActionFunction<Args, R>` — a callable with `.effect()`, `.named()`, and `.meta()`:
+A typed, generic collection with state-based filtering and lookup. `T` is the item type — each item typically exposes state functions that filtering and lookup operate on.
 
 ```typescript
-// Call the action (runs fn, then verifies effects)
-action(...args): Promise<R>
+import { State, Collection } from '@qaide/test/primitives';
 
-// Declare a state effect (chainable — returns ActionWithEffects)
-action.effect(state, expected): ActionWithEffects<Args, R>
+const items = Collection.create(async () =>
+  Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
+    isCompleted: State(async () => el.classList.contains('completed')),
+    text: State(async () => el.textContent ?? ''),
+  }))
+);
 
-// Set a display name (chainable)
-action.named(name: string): ActionFunction<Args, R>
-
-// Read metadata (name, parameter names)
-action.meta(): ActionMeta
+const first = await items.first();                                 // first item
+const completed = await items.filter({ isCompleted: true }).all(); // filter by state
+const found = await items.find({ text: 'Ship docs' });            // first match
+const count = await items.count();                                 // number of items
 ```
 
-Once `.effect()` has been called, the returned `ActionWithEffects` also exposes `.options()`:
+| Method | Returns | Description |
+|---|---|---|
+| `Collection.create(resolver)` | `Collection<T>` | Create a collection from an async resolver |
+| `.filter(expectations)` | `Collection<T>` | Filter by state values — chainable |
+| `.filter(predicate)` | `Collection<T>` | Filter by custom predicate — chainable |
+| `.find(expectations \| predicate)` | `Promise<T \| undefined>` | First matching item |
+| `.all()` | `Promise<T[]>` | Resolve all items after filters |
+| `.first()` | `Promise<T \| undefined>` | First item |
+| `.last()` | `Promise<T \| undefined>` | Last item |
+| `.at(index)` | `Promise<T \| undefined>` | Item at 0-based index |
+| `.count()` | `Promise<number>` | Number of items after filters |
+| `for await...of` | `T` | Iterate over one snapshot of matching items |
+
+### Filtering
+
+**State expectations** — the primary way to filter. Keys are state property names, values are exact values or predicates:
 
 ```typescript
-// Configure timeout and stability for effect polling (chainable)
-action.options(opts: WaitForOptions): ActionWithEffects<Args, R>
+const completed = await items.filter({ isCompleted: true }).all();
+const longNames = await items.filter({ text: (t: string) => t.length > 20 }).all();
 ```
 
-When called, an action with effects:
+Filters are chainable:
 
-1. Captures the current value of each effect state (before-snapshot)
-2. Runs the wrapped function
-3. Polls until all effects are satisfied, or throws `ActionEffectError` on timeout
+```typescript
+const activeLong = await items
+  .filter({ isCompleted: false })
+  .filter({ text: (t: string) => t.length > 10 })
+  .all();
+```
 
-**Example**
+**Item predicates** — the escape hatch for `OR` conditions, cross-state relations, or other custom logic:
+
+```typescript
+const urgentOrCompleted = await items
+  .filter(async item =>
+    (await item.isCompleted()) || (await item.text()).includes('urgent')
+  )
+  .all();
+```
+
+### Async iteration
+
+```typescript
+for await (const item of items) {
+  console.log(await item.text());
+}
+
+for await (const item of items.filter({ isCompleted: true })) {
+  console.log(await item.text());
+}
+```
+
+Each `for await...of` run resolves one snapshot of matching items. Iteration is not a live stream and does not cache across separate runs.
+
+---
+
+## Action
+
+An `Action` wraps an async operation. Optionally, it declares what state changes it expects — when called, it runs the operation and then polls until all declared effects are satisfied.
 
 ```typescript
 import { State, Action } from '@qaide/test/primitives';
@@ -159,240 +228,188 @@ const startEdit = Action(async () => {
 await startEdit();   // double-clicks the label, then waits for the edit input to appear
 ```
 
-### Effect chaining
+When an action with effects is called, it:
 
-`.effect()` is chainable — call it multiple times to declare multiple post-conditions that must all be satisfied:
+1. Captures the current value of each effect state (before-snapshot)
+2. Runs the wrapped function
+3. Polls until all effects are satisfied, or throws `ActionEffectError` on timeout
+
+| Method | Description |
+|---|---|
+| `action(...args)` | Run the action and verify effects |
+| [`.named(name: string)`](#namedname-string) | Set a display name (chainable) |
+| [`.meta()`](#meta) | Read metadata (name, parameter names) |
+| [`.effect(...)`](#effects) | Declare post-conditions — see [Effects](#effects) |
+
+### `.named(name: string)`
+
+Sets a display name used in error messages and step reporting. Chainable — returns the same action:
 
 ```typescript
-const modal = page.locator('.modal');
-const closeButton = modal.locator('.close-btn');
-const formInput = modal.locator('form input');
-const isModalVisible = State(async () => modal.isVisible()).named('isModalVisible');
-const isFormEmpty = State(async () => (await formInput.inputValue()) === '').named('isFormEmpty');
+const addItem = Action(async (text: string) => {
+  await input.fill(text);
+  await input.press('Enter');
+}).named('addItem');
+```
 
+When an effect times out, the error message includes the name and arguments:
+
+```
+ActionEffectError: Action "addItem(text: "Buy milk")" effects not met within 5000ms
+```
+
+### `.meta()`
+
+Returns metadata about the action — its name and parameter names. Useful for building tooling, custom reporters, or debugging:
+
+```typescript
+const addItem = Action(async (text: string) => {
+  await input.fill(text);
+  await input.press('Enter');
+}).named('addItem');
+
+addItem.meta();  // { name: 'addItem', params: ['text'] }
+```
+
+### `.effect()`
+
+Effects declare post-conditions that must be satisfied after an action runs. When called, the action captures before-snapshots, runs the operation, then polls until all effects hold — or throws `ActionEffectError` on timeout.
+
+```typescript
 const closeModal = Action(async () => {
   await closeButton.click();
-}).effect(isModalVisible, false)
-  .effect(isFormEmpty, true);
+}).effect(isModalVisible, false) // modal must disappear
+  .and(isFormEmpty, true)        // AND form inputs must be cleared
+  .options({ stableFor: 200 }); // must hold for 200ms
 
-await closeModal();  // waits for BOTH: modal hidden AND form inputs cleared
+await closeModal();
 ```
 
-### Effect options
+An `Action` with no `.effect()` calls simply runs the function without post-condition verification.
 
-`.options()` configures the polling behavior for all effects on an action. It accepts `WaitForOptions`:
-
-| | |
+| Method | Description |
 |---|---|
-| `timeout?` | Maximum time to wait for effects in ms. Default: `5000`. |
-| `stableFor?` | All effects must hold continuously for this many ms before resolving. Default: `0`. |
+| `.effect(state, expected)` | [Absolute](#absolute) — exact value or predicate |
+| `.effect(state, (current, previous) => boolean)` | [Relative](#relative) — compare against before-snapshot |
+| `.effect((builder, ...args) => ...)` | [Deferred](#deferred) — expected value depends on action arguments |
+| `.effect(stateDeps, (current, previous) => boolean)` | [Cross-state](#cross-state) — predicate over multiple states |
+| `.and(...)` | Alias for `.effect()` — reads more naturally when chaining |
+| `.options({ timeout, stableFor })` | Configure polling — see [options](#effect-options) |
+| `ActionEffectError` | Thrown on timeout — see [error](#actioneffecterror) |
+
+#### Effect options
+
+| Option | Description | Default |
+|---|---|---|
+| `timeout` | Maximum time to wait for effects (ms) | `5000` |
+| `stableFor` | All effects must hold continuously for this many ms before resolving | `0` |
 
 ```typescript
-const saveButton = page.locator('.save-btn');
-const successBanner = page.locator('.success-banner');
-const isSuccessVisible = State(async () => successBanner.isVisible()).named('isSuccessVisible');
-
 const save = Action(async () => {
   await saveButton.click();
-}).effect(isSuccessVisible, true)
-  .options({ timeout: 10_000 });
+}).effect(isSuccessVisible, true)  // success banner must appear
+  .options({ timeout: 10_000, stableFor: 200 }); // wait up to 10s, must hold for 200ms
 ```
 
-Use `stableFor` when the UI might briefly flash the expected state before settling:
-
-```typescript
-const dropdown = page.locator('.dropdown');
-const toggleButton = page.locator('.dropdown-toggle');
-const isDropdownOpen = State(async () => dropdown.isVisible()).named('isDropdownOpen');
-
-const openDropdown = Action(async () => {
-  await toggleButton.click();
-}).effect(isDropdownOpen, true)
-  .options({ stableFor: 200 });
-```
-
-Subsequent `.options()` calls override previous values:
-
-```typescript
-const action = Action(async () => { /* ... */ })
-  .effect(isReady, true)
-  .options({ timeout: 10_000, stableFor: 100 })
-  .options({ timeout: 3_000 });  // overrides: timeout=3000, stableFor is reset to default
-```
-
-### Effect styles
-
-**Absolute** — state must equal an exact value after the action:
-
-```typescript
-const dialog = page.locator('[role="dialog"]');
-const openButton = page.locator('button', { hasText: 'Open' });
-const isDialogOpen = State(async () => dialog.isVisible()).named('isDialogOpen');
-
-const openDialog = Action(async () => {
-  await openButton.click();
-}).effect(isDialogOpen, true);
-```
-
-**Relative** — a 2-argument predicate receives the current and before-snapshot values:
-
-```typescript
-const checkbox = page.locator('.toggle');
-const isCompleted = State(async () => checkbox.isChecked()).named('isCompleted');
-
-const toggle = Action(async () => {
-  await checkbox.click();
-}).effect(isCompleted, (current, previous) => current === !previous);
-```
-
-**Deferred** — when the expected value depends on the action's arguments:
-
-```typescript
-const activeTabLabel = page.locator('.tab.active');
-const activeTab = State(async () => activeTabLabel.innerText()).named('activeTab');
-
-const switchTab = Action(async (tabName: string) => {
-  await page.locator('.tab', { hasText: tabName }).click();
-}).effect((effect, tabName) => effect(activeTab, tabName));
-```
-
-The deferred builder receives an `ActionEffectBuilder` and the action's arguments. The builder is chainable:
-
-```typescript
-const nameInput = page.locator('#name-input');
-const value = State(async () => nameInput.inputValue()).named('value');
-const isDirty = State(async () =>
-  (await nameInput.getAttribute('class') ?? '').includes('dirty')
-).named('isDirty');
-
-const fillName = Action(async (text: string) => {
-  await nameInput.fill(text);
-}).effect((effect, text) =>
-  effect(value, text)
-  (isDirty, true)
-);
-```
-
-**Group effects** — cross-state predicates that receive all resolved state values at once:
-
-```typescript
-const sidebar = page.locator('.sidebar');
-const mainContent = page.locator('.main-content');
-const collapseButton = page.locator('.collapse-btn');
-const layout = {
-  sidebarWidth: State(async () =>
-    (await sidebar.boundingBox())?.width ?? 0
-  ).named('sidebarWidth'),
-  mainWidth: State(async () =>
-    (await mainContent.boundingBox())?.width ?? 0
-  ).named('mainWidth'),
-};
-
-const collapseSidebar = Action(async () => {
-  await collapseButton.click();
-}).effect(layout, (current, previous) =>
-  current.sidebarWidth < previous.sidebarWidth &&
-  current.mainWidth > previous.mainWidth
-);
-```
-
-### Actions without effects
-
-An `Action` with no `.effect()` calls simply runs the function without post-condition verification:
-
-```typescript
-const scrollToTop = Action(async () => {
-  await page.evaluate(() => window.scrollTo(0, 0));
-});
-```
-
-### When to use effects
-
-Effects serve two purposes:
-
-1. **Signaling UI completion** — waiting for the UI to settle after an interaction. This is the primary use case and is always safe:
-
-```typescript
-const label = page.locator('label');
-const editInput = page.locator('.edit-input');
-const isEditing = State(async () => editInput.isVisible()).named('isEditing');
-
-const startEdit = Action(async () => {
-  await label.dblclick();
-}).effect(isEditing, true);
-```
-
-```typescript
-const modal = page.locator('.modal');
-const overlay = page.locator('.overlay');
-const isModalVisible = State(async () => modal.isVisible()).named('isModalVisible');
-
-const dismissModal = Action(async () => {
-  await overlay.click();
-}).effect(isModalVisible, false);
-```
-
-2. **Encoding expected application state transitions** — declaring what *should* happen to the application state after an action. This is powerful but requires care:
-
-```typescript
-const todoItems = page.locator('.todo-list li');
-const newTodoInput = page.locator('.new-todo');
-const itemCount = State(async () => todoItems.count()).named('itemCount');
-
-const addItem = Action(async (text: string) => {
-  await newTodoInput.fill(text);
-  await newTodoInput.press('Enter');
-}).effect(itemCount, (cur, prev) => cur === prev + 1);
-```
-
-The second case encodes an application-level invariant. If the invariant doesn't hold for all possible inputs (e.g. empty text is rejected by validation), the effect will time out. Only attach effects that are universally true for how the action is used in your tests.
-
-### `ActionEffectError`
+#### `ActionEffectError`
 
 Thrown when effects are not satisfied within the timeout after the action completes.
-
-| | |
-|---|---|
-| `message` | Human-readable summary including the action call and failing effects. |
-| `actionCall` | Formatted string of the action call (e.g. `addTodo(text: "Buy milk")`). |
-| `args` | The arguments passed to the action. |
-| `timeout` | The timeout value used for effect polling (ms). |
-| `details` | Detailed breakdown of which effects failed. |
-| `cause` | The underlying `StateExpectationTimeoutError`, `StateExpectationStabilityError`, or original error. |
 
 ```
 ActionEffectError: Action "addTodo(text: "")" effects not met within 5000ms:
   - itemCount: expected predicate to pass, got 0
 ```
 
----
+| Property | Type | Description |
+|---|---|---|
+| `message` | `string` | Human-readable summary including the action call and failing effects |
+| `actionCall` | `string` | Formatted action call (e.g. `addTodo(text: "Buy milk")`) |
+| `args` | `unknown[]` | The arguments passed to the action |
+| `timeout` | `number` | The timeout value used (ms) |
+| `details` | `string` | Detailed breakdown of which effects failed |
+| `cause` | `Error?` | The underlying `StateExpectationTimeoutError` or `StateExpectationStabilityError` |
 
-## `waitFor`
+#### Effect styles
 
-Poll state expectations until they pass. Four overloads:
+**Absolute** — state must equal an exact value after the action:
 
 ```typescript
-// Sleep for a fixed duration
-waitFor(ms: number): Promise<void>
-
-// Single state with an expected value or predicate
-waitFor<T>(state: StateFunction<T>, expected: T | ((v: T) => boolean), options?: WaitForOptions): Promise<void>
-
-// Single [state, expectation] tuple
-waitFor<T>(expectation: [StateFunction<T>, T | ((v: T) => boolean)], options?: WaitForOptions): Promise<void>
-
-// Multiple [state, expectation] tuples — all evaluated together
-waitFor(expectations: [StateFunction<unknown>, unknown][], options?: WaitForOptions): Promise<void>
+const openDialog = Action(async () => {
+  await openButton.click();
+}).effect(isDialogOpen, true); // after clicking, dialog must be open
 ```
 
-**`WaitForOptions`**
+**Relative** — a 2-argument predicate receives the current and before-snapshot values:
 
-| | |
-|---|---|
-| `timeout?` | Maximum wait time in ms. Default: `5000`. |
-| `stableFor?` | All expectations must hold continuously for this many ms before resolving. Default: `0`. |
+```typescript
+const toggle = Action(async () => {
+  await checkbox.click();
+}).effect(isCompleted, (current, previous) => current === !previous); // must flip
+```
 
-**Example**
+**Deferred** — when the expected value depends on the action's arguments:
+
+```typescript
+const switchTab = Action(async (tabName: string) => {
+  await page.locator('.tab', { hasText: tabName }).click();
+}).effect((effect, tabName) => effect(activeTab, tabName)); // active tab must match the argument
+```
+
+The deferred builder supports `.and` for declaring multiple deferred effects in one call:
+
+```typescript
+const fillName = Action(async (text: string) => {
+  await nameInput.fill(text);
+}).effect((effect, text) =>
+  effect(value, text)   // input value must equal the argument
+  .and(isDirty, true)   // AND form must be marked dirty
+);
+```
+
+**Cross-state** — when an effect involves multiple states at once, pass an object of states and a predicate that receives all resolved values:
+
+```typescript
+const layout = {
+  sidebarWidth: State(async () => (await sidebar.boundingBox())?.width ?? 0).named('sidebarWidth'),
+  mainWidth: State(async () => (await mainContent.boundingBox())?.width ?? 0).named('mainWidth'),
+};
+
+const collapseSidebar = Action(async () => {
+  await collapseButton.click();
+}).effect(layout, (current, previous) =>
+  current.sidebarWidth < previous.sidebarWidth && // sidebar must shrink
+  current.mainWidth > previous.mainWidth           // AND main content must expand
+);
+```
+
+#### When to use effects
+
+Effects serve two purposes. The first is always safe. The second is powerful but requires care.
+
+**1. Signaling UI completion** — waiting for the UI to settle after an interaction. The input clears, the modal closes, the spinner disappears:
+
+```typescript
+const startEdit = Action(async () => {
+  await label.dblclick();
+}).effect(isEditing, true); // edit input must appear before proceeding
+```
+
+**2. Encoding application state transitions** — declaring invariants that should be verified every time the action runs:
+
+```typescript
+const addItem = Action(async (text: string) => {
+  await newTodoInput.fill(text);
+  await newTodoInput.press('Enter');
+}).effect(itemCount, (cur, prev) => cur === prev + 1); // item count must increase by 1
+```
+
+The second case encodes an application-level invariant. If the invariant doesn't hold for all possible inputs (e.g. empty text is rejected by validation), the effect will time out. Only attach effects that are universally true for how the action is used in your tests.
+
+---
+
+## waitFor
+
+The standalone polling engine. Waits until state expectations are met, or throws on timeout.
 
 ```typescript
 import { State, waitFor } from '@qaide/test/primitives';
@@ -400,47 +417,31 @@ import { State, waitFor } from '@qaide/test/primitives';
 const itemCount = State(async () => document.querySelectorAll('.todo-list li').length);
 const isReady = State(async () => document.querySelector('.loading') === null);
 
-await waitFor(itemCount, 3);                              // exact value match
-await waitFor(itemCount, n => n > 0, { timeout: 5000 }); // predicate with custom timeout
-await waitFor(itemCount, 3, { stableFor: 200 });          // must hold true for 200ms
+await waitFor(itemCount, 3);                              // exact value
+await waitFor(itemCount, n => n > 0, { timeout: 5000 }); // predicate + custom timeout
+await waitFor(itemCount, 3, { stableFor: 200 });          // must hold for 200ms
 await waitFor([
   [itemCount, (n: number) => n >= 1],
   [isReady, true],
-], { timeout: 5000, stableFor: 200 });                   // all conditions evaluated together
+], { timeout: 5000, stableFor: 200 });                   // multiple conditions at once
+await waitFor(250);                                        // simple sleep
 ```
 
-Also supports sleep:
+| Form | Description |
+|---|---|
+| `waitFor(state, expected, options?)` | Single state — exact value or predicate |
+| `waitFor([state, expected], options?)` | Single tuple |
+| `waitFor([[s1, e1], [s2, e2], ...], options?)` | Multiple conditions — all evaluated together |
+| `waitFor(ms)` | Sleep for a fixed duration |
 
-```typescript
-await waitFor(250);
-```
+| Option | Description | Default |
+|---|---|---|
+| `timeout` | Maximum time to wait (ms) | `5000` |
+| `stableFor` | All expectations must hold continuously for this many ms before resolving | `0` |
 
 ### `StateExpectationTimeoutError`
 
 Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations are not met within the timeout.
-
-| | |
-|---|---|
-| `message` | Human-readable summary of all failing expectations. |
-| `timeout` | The timeout value used for the wait (ms). |
-| `mismatches` | Array of `StateExpectationMismatch` — one entry per failing expectation. |
-
-**`StateExpectationMismatch`**
-
-| | |
-|---|---|
-| `label?` | Display name for the failing expectation, if available. |
-| `expected` | The expected value or predicate. |
-| `current` | The last observed value. |
-| `previous?` | The captured previous value when the expectation depends on it. |
-| `isPredicate` | `true` when `expected` is a function. |
-
-**Example error messages**
-
-```
-StateExpectationTimeoutError: State expectations not met within 5000ms:
-  - itemCount: expected 3, got 1
-```
 
 ```
 StateExpectationTimeoutError: State expectations not met within 5000ms:
@@ -448,106 +449,37 @@ StateExpectationTimeoutError: State expectations not met within 5000ms:
   - isReady: predicate failed (current: false)
 ```
 
+| Property | Type | Description |
+|---|---|---|
+| `message` | `string` | Human-readable summary of all failing expectations |
+| `timeout` | `number` | The timeout value used (ms) |
+| `mismatches` | `StateExpectationMismatch[]` | One entry per failing expectation — see below |
+
+#### `StateExpectationMismatch`
+
+Each entry in `mismatches` describes one failing expectation:
+
+| Property | Type | Description |
+|---|---|---|
+| `label` | `string?` | Display name of the failing state (from `.named()`) |
+| `expected` | `unknown` | The expected value or predicate |
+| `current` | `unknown` | The last observed value |
+| `previous` | `unknown?` | The captured before-snapshot (for relative expectations) |
+| `isPredicate` | `boolean` | `true` when `expected` is a function |
+
 ### `StateExpectationStabilityError`
 
-Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations become true but do not remain true for the configured `stableFor` period within the timeout.
+Thrown by `waitFor(...)` and `state.waitFor(...)` when expectations match but don't remain stable for the required `stableFor` duration within the timeout.
 
-| | |
-|---|---|
-| `message` | Human-readable summary of the unmet stability requirement. |
-| `stableFor` | Required stability duration in ms. |
-| `timeout` | The timeout value used for the wait (ms). |
-
----
-
-## `Collection<T>`
-
-A typed collection with state-based filtering. The resolver is any async function that returns an array of items. Each item exposes state functions — those are what `filter` and `find` primarily match against, with optional item predicates for advanced cases.
-
-**Factory**
-
-```typescript
-Collection.create<T>(resolver: () => Promise<T[]>): Collection<T>
+```
+StateExpectationStabilityError: State expectations did not remain stable for 200ms within 5000ms
 ```
 
-**Methods**
-
-| | |
-|---|---|
-| `.filter(expectations \| predicate)` | Returns a new filtered collection (chainable). Prefer state expectations; item predicates are the escape hatch for custom logic. |
-| `.all()` | Resolves all items after applying filters. Returns `Promise<T[]>`. |
-| `for await...of` | Iterates over one resolved snapshot of the current matching items. Each iteration run resolves fresh items. |
-| `.first()` | First item, or `undefined`. Returns `Promise<T \| undefined>`. |
-| `.last()` | Last item, or `undefined`. Returns `Promise<T \| undefined>`. |
-| `.at(index)` | Item at 0-based index, or `undefined`. Returns `Promise<T \| undefined>`. |
-| `.count()` | Number of items after filters. Returns `Promise<number>`. |
-| `.find(expectations \| predicate)` | First item matching expectations or a predicate, or `undefined`. Returns `Promise<T \| undefined>`. |
-
-**Filter expectations** are an object where keys are state property names on `T` and values are exact values or predicates `(v) => boolean`.
-
-**Item predicates** receive the item instance and return `boolean | Promise<boolean>`. Use them when the query needs `OR` conditions, cross-state relations, or other custom logic.
-
-**Example**
-
-```typescript
-import { State, Collection } from '@qaide/test/primitives';
-
-const items = Collection.create(async () =>
-  Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
-    isCompleted: State(async () => el.classList.contains('completed')),
-    getText: State(async () => el.textContent ?? ''),
-  }))
-);
-
-const first = await items.first();                              // first item or undefined
-const completed = await items.filter({ isCompleted: true }).all(); // filter by state value
-const byText = await items.find({ getText: 'Ship docs' });     // first match or undefined
-const urgentOrCompleted = await items
-  .filter(async item => (await item.isCompleted()) || (await item.getText()).includes('urgent'))
-  .all();
-
-for await (const item of items) {
-  console.log(await item.getText());
-}
-
-for await (const item of items.filter({ isCompleted: true })) {
-  console.log(await item.getText());
-}
-```
-
-Each `for await...of` run resolves one snapshot of the current matching items. Iteration is not a live stream and does not cache across separate runs.
-
----
-
-## Exports
-
-**Values**
-
-- `State(fn)`
-- `States({...})`
-- `Action(fn)`
-- `Collection<T>`
-- `waitFor(...)`
-- `StateExpectationError`
-- `StateExpectationTimeoutError`
-- `StateExpectationStabilityError`
-- `ActionEffectError`
-
-**Types**
-
-- `StateFunction<R>`
-- `ActionFunction<Args, R>`
-- `ActionWithEffects<Args, R>`
-- `ActionEffectBuilder`
-- `ActionMeta`
-- `EffectValue<T>`
-- `GroupEffectPredicate<D>`
-- `ResolvedDeps<D>`
-- `StateDeps`
-- `WaitForOptions`
-- `WaitForStateOptions`
-- `StateExpectationMismatch`
-- `FilterExpectations<T>`
+| Property | Type | Description |
+|---|---|---|
+| `message` | `string` | Human-readable summary |
+| `stableFor` | `number` | Required stability duration (ms) |
+| `timeout` | `number` | The timeout value used (ms) |
 
 ---
 
