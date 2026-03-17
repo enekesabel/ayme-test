@@ -88,23 +88,29 @@ Config files:
 - `release-please-config.json`
 - `.release-please-manifest.json`
 
-## Required GitHub Settings
+## Required GitHub and npm Settings
 
-1. Repository secret: `NPM_TOKEN`
-- Create an npm automation token in npm account settings.
-- Add it as a repository secret in GitHub.
+1. Configure npm Trusted Publishing for `@ayme-dev/test`
+- In npm package settings, add a trusted publisher for GitHub Actions.
+- Repository owner/user: `enekesabel`
+- Repository: `ayme-test`
+- Workflow filename for beta publishes: `beta-release.yml`
+- Workflow filename for stable publishes: `release-please.yml`
+- These values are case-sensitive and must match exactly.
 
 2. Repository Actions setting:
 - Ensure GitHub Actions is allowed to create pull requests.
 
 Optional:
 - If needed in your org policy, create `RELEASE_PLEASE_TOKEN` and wire it into the workflow.
+- After Trusted Publishing is verified, revoke old npm publish tokens and restrict token-based publishing in npm package settings.
 
 ## Publishing Channels
 
 Stable releases:
 - handled by the manual `release-please` workflow
 - published with npm's `latest` tag
+- uses npm Trusted Publishing via GitHub OIDC, not `NPM_TOKEN`
 
 Beta/pre-release channel:
 - handled by `.github/workflows/beta-release.yml`
@@ -113,6 +119,7 @@ Beta/pre-release channel:
 - computes a unique version from the current base version in `package.json`
 - publishes to npm with the `beta` dist-tag
 - publishes the exact commit SHA that passed CI
+- uses npm Trusted Publishing via GitHub OIDC, not `NPM_TOKEN`
 
 Version shape for betas:
 - if `package.json` is `0.1.0-beta.0`, workflow publishes versions like `0.1.0-beta.<run_number>.<run_attempt>`
@@ -136,6 +143,6 @@ pnpm exec commitlint --from HEAD~10 --to HEAD --verbose
 
 ## Troubleshooting
 
-- `403 Forbidden`: verify the npm token in `NPM_TOKEN` belongs to an account with publish rights for `@ayme-dev/test`.
+- `EOTP` or authentication failures: verify npm Trusted Publishing is configured for the exact repository and workflow filename, and that the workflow has `id-token: write`.
 - `402 Payment Required`: ensure publish is public for this scoped package.
 - Package not found after publish: check [npm package page](https://www.npmjs.com/package/@ayme-dev/test).
