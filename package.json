@@ -84,12 +84,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/enekesabel/qaide-testing.git"
+    "url": "https://github.com/enekesabel/ayme-test.git"
   },
   "bugs": {
-    "url": "https://github.com/enekesabel/qaide-testing/issues"
+    "url": "https://github.com/enekesabel/ayme-test/issues"
   },
-  "homepage": "https://github.com/enekesabel/qaide-testing#readme",
+  "homepage": "https://github.com/enekesabel/ayme-test#readme",
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"
   },

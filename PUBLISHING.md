@@ -1,6 +1,6 @@
 # Publishing Guide for @ayme-dev/test
 
-This repository (`qaide-testing`) uses two release paths:
+This repository (`ayme-test`) uses two release paths:
 - a manual-only `release-please` workflow kept ready for stable releases
 - a continuous beta publish workflow for experimentation on `main`
 
