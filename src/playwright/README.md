@@ -1,4 +1,4 @@
-# @qaide/test/playwright
+# @ayme-dev/test/playwright
 
 Drop-in replacement for `@playwright/test` with state-driven testing extensions.
 
@@ -7,7 +7,7 @@ Drop-in replacement for `@playwright/test` with state-driven testing extensions.
 import { test, expect } from '@playwright/test';
 
 // After — same API, plus toHaveState and typed POMs
-import { test, expect } from '@qaide/test/playwright';
+import { test, expect } from '@ayme-dev/test/playwright';
 ```
 
 Everything Playwright provides, plus:
@@ -21,7 +21,7 @@ Everything Playwright provides, plus:
 ## At a Glance
 
 ```typescript
-import { test, expect, PageObject, PageComponent } from '@qaide/test/playwright';
+import { test, expect, PageObject, PageComponent } from '@ayme-dev/test/playwright';
 import type { Page, Locator } from '@playwright/test';
 
 // PageComponent — scoped to a root Locator
@@ -70,7 +70,7 @@ test('adds a todo', async ({ page }) => {
 
 ## POM Classes
 
-Built on [`@qaide/test/pom-universal`](../pom-universal/README.md) — see the [universal POM docs](../pom-universal/README.md) for the full `PageFragment` API (`State`, `Action`, `Collection`, `Locators`, `waitFor`, `WithLocators`).
+Built on [`@ayme-dev/test/pom-universal`](../pom-universal/README.md) — see the [universal POM docs](../pom-universal/README.md) for the full `PageFragment` API (`State`, `Action`, `Collection`, `Locators`, `waitFor`, `WithLocators`).
 
 ### `PageObject`
 

@@ -1,4 +1,4 @@
-# Publishing Guide for @qaide/test
+# Publishing Guide for @ayme-dev/test
 
 This repository (`qaide-testing`) uses two release paths:
 - a manual-only `release-please` workflow kept ready for stable releases
@@ -8,7 +8,7 @@ This repository (`qaide-testing`) uses two release paths:
 
 - Package manager: `pnpm`
 - Registry: `npm`
-- Package name: `@qaide/test`
+- Package name: `@ayme-dev/test`
 - Versioning: SemVer while remaining pre-1.0
 
 Pre-1.0 behavior configured in `release-please-config.json`:
@@ -19,11 +19,11 @@ Pre-1.0 behavior configured in `release-please-config.json`:
 ## One-Time npm Setup
 
 1. Create/login to an npm account.
-2. Ensure access to the `qaide` npm organization for scoped publishes.
+2. Ensure access to the `ayme-dev` npm organization for scoped publishes.
 3. Verify org access:
 
 ```bash
-npm org ls qaide
+npm org ls ayme-dev
 ```
 
 ## Conventional Commits
@@ -136,6 +136,6 @@ pnpm exec commitlint --from HEAD~10 --to HEAD --verbose
 
 ## Troubleshooting
 
-- `403 Forbidden`: verify the npm token in `NPM_TOKEN` belongs to an account with publish rights for `@qaide/test`.
+- `403 Forbidden`: verify the npm token in `NPM_TOKEN` belongs to an account with publish rights for `@ayme-dev/test`.
 - `402 Payment Required`: ensure publish is public for this scoped package.
-- Package not found after publish: check [npm package page](https://www.npmjs.com/package/@qaide/test).
+- Package not found after publish: check [npm package page](https://www.npmjs.com/package/@ayme-dev/test).

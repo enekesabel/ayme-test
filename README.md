@@ -1,16 +1,16 @@
-# @qaide/test
+# @ayme-dev/test
 
 **State-driven, semantic testing for Playwright.**
 
-`@qaide/test` is a **drop-in companion** for `@playwright/test` that gives your tests a structure layer — semantic state queries, self-verifying actions, and typed page objects that keep implementation details out of your test code.
+`@ayme-dev/test` is a **drop-in companion** for `@playwright/test` that gives your tests a structure layer — semantic state queries, self-verifying actions, and typed page objects that keep implementation details out of your test code.
 
-It's **100% compatible** with Playwright. Same runner, same config, same reports. You just import from `@qaide/test/playwright` instead of `@playwright/test` and get a better model for writing **tests that survive UI changes**.
+It's **100% compatible** with Playwright. Same runner, same config, same reports. You just import from `@ayme-dev/test/playwright` instead of `@playwright/test` and get a better model for writing **tests that survive UI changes**.
 
 **What's inside:**
 
-- **[`@qaide/test/primitives`](src/primitives/README.md)**:`State`, `Action`, `Collection`, `waitFor` —  framework-agnostic, stateful testing primitives — works without classes
-- **[`@qaide/test/pom-universal`](src/pom-universal/README.md)**: universal Page Object Model, built on top of the primitives — driver-neutral, bring your own framework
-- **[`@qaide/test/playwright`](src/playwright/README.md)**: Playwright-specific POM implementation, improved Action reporting, `toHaveState` assertion — built on top of the universal POM
+- **[`@ayme-dev/test/primitives`](src/primitives/README.md)**:`State`, `Action`, `Collection`, `waitFor` —  framework-agnostic, stateful testing primitives — works without classes
+- **[`@ayme-dev/test/pom-universal`](src/pom-universal/README.md)**: universal Page Object Model, built on top of the primitives — driver-neutral, bring your own framework
+- **[`@ayme-dev/test/playwright`](src/playwright/README.md)**: Playwright-specific POM implementation, improved Action reporting, `toHaveState` assertion — built on top of the universal POM
 
 ## Why
 
@@ -28,7 +28,7 @@ In practice:
 
 If this sounds familiar, you're not alone.
 
-**@qaide/test gives you that missing layer:**
+**@ayme-dev/test gives you that missing layer:**
 
 - Implementation details live in **one place** — tests express pure intent
 - Actions **know when they're done** — no manual waits, no flaky timeouts
@@ -66,10 +66,10 @@ test('add todos and complete one', async ({ page }) => {
 
 It works, but every assertion is coupled to *how* the UI represents state, not *what* the user perceives. Rename a class? Restructure the markup? The test breaks.
 
-Here's the same test with `@qaide/test`:
+Here's the same test with `@ayme-dev/test`:
 
 ```typescript
-import { test, expect } from '@qaide/test/playwright';
+import { test, expect } from '@ayme-dev/test/playwright';
 
 test('add todos and complete one', async ({ page }) => {
   const todoPage = new TodoPage(page);     // typed page object, not a locator bag
@@ -96,7 +96,7 @@ No selectors in the test. No CSS classes. No DOM structure assumptions. The test
 Here's the `TodoPage` that makes it possible:
 
 ```typescript
-import { PageObject, PageComponent } from '@qaide/test/playwright';
+import { PageObject, PageComponent } from '@ayme-dev/test/playwright';
 
 class TodoItem extends PageComponent {
   locators = this.Locators({
@@ -149,17 +149,17 @@ All the selectors and mechanics live in the page object. If the DOM changes, you
 ## Install
 
 ```bash
-npm install @qaide/test @playwright/test
+npm install @ayme-dev/test @playwright/test
 ```
 
-`@qaide/test/playwright` re-exports everything from `@playwright/test`, so you can replace your imports without changing anything else. Works with your existing `playwright.config.ts` — no extra configuration needed.
+`@ayme-dev/test/playwright` re-exports everything from `@playwright/test`, so you can replace your imports without changing anything else. Works with your existing `playwright.config.ts` — no extra configuration needed.
 
 ```typescript
 // Before
 import { test, expect } from '@playwright/test';
 
 // After — same API, plus toHaveState and typed POMs
-import { test, expect } from '@qaide/test/playwright';
+import { test, expect } from '@ayme-dev/test/playwright';
 ```
 
 Run tests with the standard Playwright runner:
@@ -170,7 +170,7 @@ npx playwright test
 
 ## Core Concepts
 
-> The examples below use `@qaide/test/playwright` — the typed POM layer built on top of Playwright.  
+> The examples below use `@ayme-dev/test/playwright` — the typed POM layer built on top of Playwright.  
 >
 > For framework-agnostic primitives (`State`, `Action`, `Collection`, `waitFor`) without classes, see the [primitives docs](src/primitives/README.md).
 
@@ -370,19 +370,19 @@ Advanced patterns and concepts.
 
 ## Under the Hood
 
-`@qaide/test` is built in three layers, each usable independently:
+`@ayme-dev/test` is built in three layers, each usable independently:
 
 ```
-@qaide/test/primitives    → framework-agnostic core
-@qaide/test/pom-universal → driver-neutral POM base
-@qaide/test/playwright    → Playwright adapter
+@ayme-dev/test/primitives    → framework-agnostic core
+@ayme-dev/test/pom-universal → driver-neutral POM base
+@ayme-dev/test/playwright    → Playwright adapter
 ```
 
-**`@qaide/test/primitives`** — `State`, `Action`, `Collection`, and `waitFor` without any Playwright dependency. Use this when building custom test harnesses, incrementally adopting state-driven assertions in existing tests, or using the state model outside of a browser context. → [API reference](src/primitives/README.md)
+**`@ayme-dev/test/primitives`** — `State`, `Action`, `Collection`, and `waitFor` without any Playwright dependency. Use this when building custom test harnesses, incrementally adopting state-driven assertions in existing tests, or using the state model outside of a browser context. → [API reference](src/primitives/README.md)
 
-**`@qaide/test/pom-universal`** — the `PageFragment` base class that the Playwright adapter is built on. Use this when building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.). → [API reference](src/pom-universal/README.md)
+**`@ayme-dev/test/pom-universal`** — the `PageFragment` base class that the Playwright adapter is built on. Use this when building a POM adapter for a non-Playwright driver (Cypress, WebDriverIO, Appium, etc.). → [API reference](src/pom-universal/README.md)
 
-**`@qaide/test/playwright`** — the main entrypoint for most users. Re-exports all of Playwright's API and adds `toHaveState`, typed POM classes (`PageObject`, `PageComponent`), and automatic step reporting. → [API reference](src/playwright/README.md)
+**`@ayme-dev/test/playwright`** — the main entrypoint for most users. Re-exports all of Playwright's API and adds `toHaveState`, typed POM classes (`PageObject`, `PageComponent`), and automatic step reporting. → [API reference](src/playwright/README.md)
 
 ## Stability
 

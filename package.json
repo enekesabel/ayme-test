@@ -1,5 +1,5 @@
 {
-  "name": "@qaide/test",
+  "name": "@ayme-dev/test",
   "version": "0.1.0-beta.0",
   "description": "State-driven, semantic web UI and E2E testing. Playwright adapter included.",
   "type": "module",
@@ -74,9 +74,9 @@
     "playwright",
     "automation",
     "web-testing",
-    "qaide"
+    "ayme-dev"
   ],
-  "author": "qaide",
+  "author": "ayme-dev",
   "license": "MIT",
   "packageManager": "pnpm@10.4.1",
   "engines": {
