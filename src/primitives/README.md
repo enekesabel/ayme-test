@@ -1,4 +1,4 @@
-# @qaide/test/primitives
+# @ayme-dev/test/primitives
 
 Framework-agnostic primitives for state-driven testing.
 
@@ -8,7 +8,7 @@ Framework-agnostic primitives for state-driven testing.
 
 Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shapes. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-`@qaide/test/primitives` offers the foundation layer for an alternative — framework-agnostic building blocks for state-driven testing:
+`@ayme-dev/test/primitives` offers the foundation layer for an alternative — framework-agnostic building blocks for state-driven testing:
 
 - `State` — a named live query: `() => Promise<T>`. Encapsulates how to read a fact about the system.
 - `Action` — wraps an async operation and declares what state changes it expects.
@@ -19,13 +19,13 @@ No classes, no framework dependency. Everything the POM layer uses internally, a
 
 **When to use primitives directly**
 
-Use `@qaide/test/primitives` when you want the state-driven assertion model without page object classes. Typical cases:
+Use `@ayme-dev/test/primitives` when you want the state-driven assertion model without page object classes. Typical cases:
 
 - Composing your own abstractions (functional, class-based, or hybrid)
 - Incremental adoption in existing test suites alongside other tools
 - Building custom adapters for drivers not covered by the Playwright package
 
-If you're using Playwright and want the full typed POM experience, start with [`@qaide/test/playwright`](../playwright/README.md).
+If you're using Playwright and want the full typed POM experience, start with [`@ayme-dev/test/playwright`](../playwright/README.md).
 
 ---
 
@@ -34,7 +34,7 @@ If you're using Playwright and want the full typed POM experience, start with [`
 A `State` is a named async query that reads a fact about the system.
 
 ```typescript
-import { State } from '@qaide/test/primitives';
+import { State } from '@ayme-dev/test/primitives';
 
 const itemCount = State(async () =>
   document.querySelectorAll('.todo-list li').length
@@ -74,7 +74,7 @@ await itemCount.waitFor(n => n > 0, { stableFor: 200 });   // predicate + stabil
 States can derive their value from other states. This keeps each layer focused on its own abstraction level:
 
 ```typescript
-import { State, Collection } from '@qaide/test/primitives';
+import { State, Collection } from '@ayme-dev/test/primitives';
 
 const isChecked = State(async () =>
   checkbox.getAttribute('aria-checked') === 'true'
@@ -119,7 +119,7 @@ Today "editing" means a hidden label, a visible input, and focus. Tomorrow it mi
 Convenience helper to create multiple named states at once. Keys become display names automatically.
 
 ```typescript
-import { States } from '@qaide/test/primitives';
+import { States } from '@ayme-dev/test/primitives';
 
 const { isReady, itemCount } = States({
   isReady: async () => document.querySelector('.loading') === null,
@@ -138,7 +138,7 @@ const { isReady, itemCount } = States({
 A typed, generic collection with state-based filtering and lookup. `T` is the item type — each item typically exposes state functions that filtering and lookup operate on.
 
 ```typescript
-import { State, Collection } from '@qaide/test/primitives';
+import { State, Collection } from '@ayme-dev/test/primitives';
 
 const items = Collection.create(async () =>
   Array.from(document.querySelectorAll('.todo-list li')).map(el => ({
@@ -215,7 +215,7 @@ Each `for await...of` run resolves one snapshot of matching items. Iteration is 
 An `Action` wraps an async operation. Optionally, it declares what state changes it expects — when called, it runs the operation and then polls until all declared effects are satisfied.
 
 ```typescript
-import { State, Action } from '@qaide/test/primitives';
+import { State, Action } from '@ayme-dev/test/primitives';
 
 const label = page.locator('label');
 const editInput = page.locator('.edit-input');
@@ -412,7 +412,7 @@ The second case encodes an application-level invariant. If the invariant doesn't
 The standalone polling engine. Waits until state expectations are met, or throws on timeout.
 
 ```typescript
-import { State, waitFor } from '@qaide/test/primitives';
+import { State, waitFor } from '@ayme-dev/test/primitives';
 
 const itemCount = State(async () => document.querySelectorAll('.todo-list li').length);
 const isReady = State(async () => document.querySelector('.loading') === null);

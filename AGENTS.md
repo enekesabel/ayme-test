@@ -31,7 +31,7 @@ Consistent heading levels and formatting across all READMEs:
 
 | Level | Use for | Format |
 |---|---|---|
-| `#` | Package title | Inline code: `# @qaide/test` |
+| `#` | Package title | Inline code: `# @ayme-dev/test` |
 | `##` | Page sections / top-level API concepts | Plain text: `## State`, `## Core Concepts`, `## Why` |
 | `###` | Methods, concept groups, error types | Methods: backtick + dot + params (`` ### `.waitFor(expected, options?)` ``). Concepts: plain text (`### Filtering`). Types/errors: backtick code (`` ### `StateExpectationTimeoutError` ``) |
 | `####` | Sub-items under `###` | Same rules as `###`, one level deeper |

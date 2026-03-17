@@ -1,4 +1,4 @@
-# @qaide/test/pom-universal
+# @ayme-dev/test/pom-universal
 
 Framework-neutral base for building typed Page Object Model adapters.
 
@@ -6,15 +6,15 @@ Framework-neutral base for building typed Page Object Model adapters.
 
 > The POM abstraction without coupling to any test driver.
 
-`@qaide/test/pom-universal` is the foundation that all POM adapters are built on. It gives you:
+`@ayme-dev/test/pom-universal` is the foundation that all POM adapters are built on. It gives you:
 
-- The same **state-driven model** as `@qaide/test/playwright` — State, Action, Collection, Locators, waitFor — without depending on any specific driver
+- The same **state-driven model** as `@ayme-dev/test/playwright` — State, Action, Collection, Locators, waitFor — without depending on any specific driver
 - **Auto-naming** — states and actions discover their property names from the class, so error messages and reports are meaningful without manual `.named()` calls
 - **Effect wiring** — the full `.effect()` / `.and()` / `.options()` API, handled at the base class level
 - **Locator overrides** via `WithLocators` — swap locators without subclassing
 - **`createAdapter()`** — a factory that turns your customized fragment into `PageObject` and `PageComponent` abstract base classes, ready for end users to extend
 
-`@qaide/test/playwright` is a concrete adapter built on this layer. Use `pom-universal` directly when you need the same POM model with a different driver.
+`@ayme-dev/test/playwright` is a concrete adapter built on this layer. Use `pom-universal` directly when you need the same POM model with a different driver.
 
 ---
 
@@ -25,7 +25,7 @@ Framework-neutral base for building typed Page Object Model adapters.
 `createAdapter()` takes a framework-specific `PageFragment` subclass and returns `PageObject` and `PageComponent` base classes:
 
 ```typescript
-import { createAdapter } from '@qaide/test/pom-universal';
+import { createAdapter } from '@ayme-dev/test/pom-universal';
 import { MyFragment, myLocator, type MyLocator } from './my-adapter'; // see Building an Adapter
 
 // createAdapter returns PageObject and PageComponent —
@@ -87,7 +87,7 @@ Abstract base class for all page fragments. `L` is the locator type — Playwrig
 | [`this.State<R>(fn: () => Promise<R>)`](#thisstatefn) | `State<R>` | Named state query. Auto-named as `ClassName.propertyName`. |
 | [`this.Action<Args, R>(fn: (...args: Args) => Promise<R>)`](#thisactionfn) | `Action<Args, R>` | Named action with `.effect()` support. Routes through `executeAction()`. |
 | [`this.Collection<T>(resolver: () => Promise<T[]>)`](#thiscollectionresolver) | `Collection<T>` | Creates a collection from an async resolver. |
-| `this.waitFor` | — | Same as `waitFor(...)` from [`@qaide/test/primitives`](../primitives/README.md). |
+| `this.waitFor` | — | Same as `waitFor(...)` from [`@ayme-dev/test/primitives`](../primitives/README.md). |
 | [`WithLocators(overrides)`](#withlocatorsoverrides) | `this` | Returns a new instance with specific locators swapped out. |
 | [`executeAction<Args, R>(action, args)`](#executeaction-hook) | `Promise<R>` | Hook for adapters — override to wrap action execution. |
 | [`clone()`](#clone-hook) | `this` | Hook for adapters — override to enable `WithLocators` instance creation. |
@@ -111,7 +111,7 @@ States and actions reference locators via `this.locators.*` — never raw select
 
 ### `this.State(fn)`
 
-Identical to `State()` from [`@qaide/test/primitives`](../primitives/README.md) but with automatic naming. The property key and class name are discovered at first use:
+Identical to `State()` from [`@ayme-dev/test/primitives`](../primitives/README.md) but with automatic naming. The property key and class name are discovered at first use:
 
 ```typescript
 class TodoPage extends PageObject {
@@ -128,7 +128,7 @@ Supports `.waitFor()`, composition, and all other State features — see [primit
 
 ### `this.Action(fn)`
 
-Identical to `Action()` from [`@qaide/test/primitives`](../primitives/README.md) but with auto-naming and routing through `executeAction()`. Adapters override `executeAction()` to add step reporting, logging, etc.
+Identical to `Action()` from [`@ayme-dev/test/primitives`](../primitives/README.md) but with auto-naming and routing through `executeAction()`. Adapters override `executeAction()` to add step reporting, logging, etc.
 
 ```typescript
 class TodoPage extends PageObject {
@@ -151,7 +151,7 @@ Supports `.effect()`, `.and()`, `.options()` — see [primitives docs](../primit
 
 ### `this.Collection(resolver)`
 
-Same as `Collection.create()` from [`@qaide/test/primitives`](../primitives/README.md). Adapters can add shorthand overloads — the Playwright adapter adds `this.Collection(ComponentClass, locator)` which resolves via `Locator.all()`.
+Same as `Collection.create()` from [`@ayme-dev/test/primitives`](../primitives/README.md). Adapters can add shorthand overloads — the Playwright adapter adds `this.Collection(ComponentClass, locator)` which resolves via `Locator.all()`.
 
 ```typescript
 class TodoPage extends PageObject {
@@ -269,13 +269,13 @@ protected override clone(): this {
 
 ### Example: Playwright Adapter
 
-Here's how `@qaide/test/playwright` is built:
+Here's how `@ayme-dev/test/playwright` is built:
 
 ```typescript
 import { Page, Locator, test } from '@playwright/test';
-import { PageFragment, createAdapter } from '@qaide/test/pom-universal';
-import type { ActionFunction } from '@qaide/test/primitives';
-import { Collection } from '@qaide/test/primitives';
+import { PageFragment, createAdapter } from '@ayme-dev/test/pom-universal';
+import type { ActionFunction } from '@ayme-dev/test/primitives';
+import { Collection } from '@ayme-dev/test/primitives';
 import { formatActionCall } from './format';
 
 type ComponentConstructor<T> = new (locator: Locator, page: Page) => T;

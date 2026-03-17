@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "@qaide/test",
+      "package-name": "@ayme-dev/test",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false
     }
