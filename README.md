@@ -2,9 +2,9 @@
 
 **State-driven, semantic testing for Playwright.**
 
-`@ayme-dev/test` is a **drop-in companion** for `@playwright/test` that gives your tests a structure layer — semantic state queries, self-verifying actions, and typed page objects that keep implementation details out of your test code.
+`@ayme-dev/test` is a drop-in companion for `@playwright/test` that adds semantic state queries, self-verifying actions, and typed page objects.
 
-It's **100% compatible** with Playwright. Same runner, same config, same reports. You just import from `@ayme-dev/test/playwright` instead of `@playwright/test` and get a better model for writing **tests that survive UI changes**.
+It uses the same runner, config, and reports as Playwright. You just import from `@ayme-dev/test/playwright` instead of `@playwright/test`.
 
 **What's inside:**
 
@@ -14,9 +14,7 @@ It's **100% compatible** with Playwright. Same runner, same config, same reports
 
 ## Why
 
-> Stop testing implementation details. Start testing behavior.
-
-Playwright is an incredible tool. Its locator engine, auto-waiting, and tracing are best-in-class. But Playwright gives you *primitives* — it doesn't prescribe how to keep tests maintainable as your app and test suite grow.
+Playwright provides strong low-level primitives, but it does not define how to structure tests as a codebase grows.
 
 In practice:
 
@@ -26,7 +24,7 @@ In practice:
 - Synchronization relies on **manual waits and timeouts**
 - There's **no clear boundary** between *what* the test checks and *how*
 
-If this sounds familiar, you're not alone.
+This is the problem the library is trying to address.
 
 **@ayme-dev/test gives you that missing layer:**
 
@@ -37,7 +35,7 @@ If this sounds familiar, you're not alone.
 - **Built-in de-flickering** — `stableFor` ensures states hold before assertions pass, eliminating flaky transitions
 - **Automatic step reporting** in Playwright's HTML report and trace viewer
 
-## Enough talk, show me the code
+## Example
 
 Here's a typical Playwright test for TodoMVC:
 
