@@ -8,14 +8,14 @@ Framework-agnostic primitives for state-driven testing.
 
 Most E2E tests become brittle because they assert through implementation details: DOM structure, CSS classes, selector shapes. A small UI refactor breaks many tests even when the behavior is unchanged.
 
-`@ayme-dev/test/primitives` offers the foundation layer for an alternative — framework-agnostic building blocks for state-driven testing:
+`@ayme-dev/test/primitives` provides framework-agnostic building blocks for state-driven testing:
 
 - `State` — a named live query: `() => Promise<T>`. Encapsulates how to read a fact about the system.
 - `Action` — wraps an async operation and declares what state changes it expects.
 - `waitFor` — a polling assertion engine. Waits until all states match expectations.
 - `Collection` — typed item sets with state-based filtering and lookup.
 
-No classes, no framework dependency. Everything the POM layer uses internally, available for direct composition.
+No classes and no framework dependency. These are the same primitives used by the POM layer, exposed directly for composition.
 
 **When to use primitives directly**
 
