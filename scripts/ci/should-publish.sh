@@ -43,13 +43,17 @@ EOF
 
 if [ "${SHOULD_PUBLISH}" = false ] && [ "${PACKAGE_JSON_CHANGED}" = true ]; then
   if BASE_SHA="${BASE_SHA}" HEAD_SHA="${HEAD_SHA}" node <<'NODE'
-const { execSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 
 const baseSha = process.env.BASE_SHA;
 const headSha = process.env.HEAD_SHA;
 
-const before = JSON.parse(execSync(`git show ${baseSha}:package.json`, { encoding: 'utf8' }));
-const after = JSON.parse(execSync(`git show ${headSha}:package.json`, { encoding: 'utf8' }));
+const before = JSON.parse(
+  execFileSync('git', ['show', `${baseSha}:package.json`], { encoding: 'utf8' })
+);
+const after = JSON.parse(
+  execFileSync('git', ['show', `${headSha}:package.json`], { encoding: 'utf8' })
+);
 
 const publishRelevantKeys = [
   'name',
@@ -84,8 +88,14 @@ NODE
   then
     :
   else
-    SHOULD_PUBLISH=true
-    REASON="package.json runtime/package metadata changed."
+    exit_code=$?
+    if [ "${exit_code}" -eq 10 ]; then
+      SHOULD_PUBLISH=true
+      REASON="package.json runtime/package metadata changed."
+    else
+      SHOULD_PUBLISH=true
+      REASON="package.json check failed (node exited ${exit_code}); publishing for safety."
+    fi
   fi
 fi
 
