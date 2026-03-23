@@ -80,4 +80,17 @@ jobs:
 
       - name: Point latest to published beta
         if: ${{ steps.publish-check.outputs.should_publish == 'true' }}
-        run: npm dist-tag add "@ayme-dev/test@${{ steps.beta-version.outputs.version }}" latest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_LATEST="$(npm view @ayme-dev/test dist-tags.latest)"
+          echo "current_latest=$CURRENT_LATEST"
+
+          # During beta-only phase, `latest` is a prerelease and we keep it fresh.
+          # After a stable release (non-prerelease) owns `latest`, do not override it from beta publishes.
+          if [[ "$CURRENT_LATEST" == *-* ]]; then
+            npm dist-tag add "@ayme-dev/test@${{ steps.beta-version.outputs.version }}" latest
+          else
+            echo "latest points to stable ($CURRENT_LATEST); leaving unchanged"
+          fi

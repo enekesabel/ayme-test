@@ -76,7 +76,8 @@ const changedKeys = publishRelevantKeys.filter((key) => {
 });
 
 if (changedKeys.length > 0) {
-  console.log(`package.json publish-relevant keys changed: ${changedKeys.join(', ')}`);
+  // Keep stdout clean when this script is redirected into $GITHUB_OUTPUT.
+  console.error(`package.json publish-relevant keys changed: ${changedKeys.join(', ')}`);
   process.exit(10);
 }
 NODE
