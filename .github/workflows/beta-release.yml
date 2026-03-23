@@ -89,7 +89,7 @@ jobs:
 
           # During beta-only phase, `latest` is a prerelease and we keep it fresh.
           # After a stable release (non-prerelease) owns `latest`, do not override it from beta publishes.
-          if [[ "$CURRENT_LATEST" == *-* ]]; then
+          if [[ -z "$CURRENT_LATEST" || "$CURRENT_LATEST" == *-* ]]; then
             npm dist-tag add "@ayme-dev/test@${{ steps.beta-version.outputs.version }}" latest
           else
             echo "latest points to stable ($CURRENT_LATEST); leaving unchanged"
