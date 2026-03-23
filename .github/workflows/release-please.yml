@@ -28,15 +28,30 @@ jobs:
       - name: Checkout
         if: ${{ steps.release.outputs.release_created == 'true' }}
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether publish is needed
+        id: publish-check
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        shell: bash
+        run: |
+          bash scripts/ci/should-publish.sh >> "$GITHUB_OUTPUT"
+
+      - name: Publish decision
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: |
+          echo "should_publish=${{ steps.publish-check.outputs.should_publish }}"
+          echo "reason=${{ steps.publish-check.outputs.reason }}"
 
       - name: Setup pnpm
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -44,17 +59,17 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Ensure npm version for trusted publishing
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Build package
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         run: pnpm build
 
       - name: Publish to npm
-        if: ${{ steps.release.outputs.release_created == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' && steps.publish-check.outputs.should_publish == 'true' }}
         run: npm publish --access public
