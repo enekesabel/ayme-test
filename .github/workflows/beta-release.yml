@@ -24,13 +24,40 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
-          fetch-depth: 2
+          fetch-depth: 0
+
+      - name: Resolve publish diff range
+        id: diff-range
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          HEAD_SHA="${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
+          BASE_SHA=""
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            CHECK_SUITE_ID="${{ github.event.workflow_run.check_suite_id }}"
+            if [[ -n "$CHECK_SUITE_ID" && "$CHECK_SUITE_ID" != "null" ]]; then
+              BASE_SHA="$(gh api "repos/${{ github.repository }}/check-suites/${CHECK_SUITE_ID}" --jq '.before // empty' || true)"
+            fi
+          fi
+
+          if [[ -z "$BASE_SHA" ]]; then
+            BASE_SHA="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+          fi
+
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "resolved_base_sha=$BASE_SHA"
+          echo "resolved_head_sha=$HEAD_SHA"
 
       - name: Decide whether beta publish is needed
         id: publish-check
         shell: bash
         run: |
-          bash scripts/ci/should-publish.sh >> "$GITHUB_OUTPUT"
+          bash scripts/ci/should-publish.sh "${{ steps.diff-range.outputs.base_sha }}" "${{ steps.diff-range.outputs.head_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Publish decision
         run: |
